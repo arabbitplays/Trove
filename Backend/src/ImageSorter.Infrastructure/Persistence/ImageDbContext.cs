@@ -19,7 +19,9 @@ public sealed class ImageDbContext(DbContextOptions<ImageDbContext> options) : D
             entity.Property(image => image.ContentType).HasMaxLength(100).IsRequired();
             entity.Property(image => image.OriginalName).HasMaxLength(255).IsRequired();
             entity.Property(image => image.AddedAt).HasColumnType("timestamp with time zone").IsRequired();
+            entity.Property(image => image.Dirty).HasColumnName("dirty").HasDefaultValue(true).IsRequired();
             entity.HasIndex(image => image.AddedAt);
+            entity.HasIndex(image => image.Dirty);
         });
         modelBuilder.Entity<Tag>(entity =>
         {

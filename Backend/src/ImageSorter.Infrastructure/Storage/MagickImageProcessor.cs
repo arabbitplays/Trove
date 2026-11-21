@@ -46,4 +46,18 @@ public sealed class MagickImageProcessor : IImageProcessor
         image.Write(output);
         return output.ToArray();
     }
+
+    public string GetPixelFingerprint(string imagePath)
+    {
+        try
+        {
+            using var image = new MagickImage(imagePath);
+            image.AutoOrient();
+            return $"{image.Width}x{image.Height}:{image.Signature}";
+        }
+        catch (MagickException error)
+        {
+            throw new IOException("The image pixels could not be decoded.", error);
+        }
+    }
 }

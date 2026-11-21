@@ -7,8 +7,46 @@ namespace ImageSorter.Infrastructure.Persistence;
 public sealed class EfImageCatalog(ImageDbContext db) : IImageCatalog
 {
     public Task<bool> ExistsAsync(string hash, CancellationToken ct) => db.Images.AnyAsync(image => image.Hash == hash, ct);
-    public Task<bool> OriginalNameExistsAsync(string originalName, CancellationToken ct) => db.Images.AnyAsync(image => image.OriginalName == originalName, ct);
     public async Task AddAsync(ImageRecord image, CancellationToken ct) { db.Images.Add(image); await db.SaveChangesAsync(ct); }
+    public async Task<IReadOnlyList<ImageRecord>> GetDirtyImagesAsync(CancellationToken ct) => await db.Images.AsNoTracking()
+        .Where(image => image.Dirty)
+        .OrderBy(image => image.AddedAt)
+        .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<string>> GetImageHashesAsync(CancellationToken ct) => await db.Images.AsNoTracking()
+        .OrderBy(image => image.Hash)
+        .Select(image => image.Hash)
+        .ToListAsync(ct);
+
+    public async Task MarkCleanAsync(string hash, CancellationToken ct) =>
+        await db.Images.Where(image => image.Hash == hash)
+            .ExecuteUpdateAsync(update => update.SetProperty(image => image.Dirty, false), ct);
+
+    public async Task<bool> MergeTagsAndDeleteAsync(string sourceHash, string targetHash, CancellationToken ct)
+    {
+        if (sourceHash == targetHash) return false;
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var source = await db.Images.Include(image => image.ImageTags)
+            .SingleOrDefaultAsync(image => image.Hash == sourceHash, ct);
+        var target = await db.Images.Include(image => image.ImageTags)
+            .SingleOrDefaultAsync(image => image.Hash == targetHash, ct);
+        if (source is null || target is null)
+        {
+            await transaction.CommitAsync(ct);
+            return false;
+        }
+
+        var targetTags = target.ImageTags.Select(link => link.TagName).ToHashSet(StringComparer.Ordinal);
+        db.ImageTags.AddRange(source.ImageTags
+            .Where(link => targetTags.Add(link.TagName))
+            .Select(link => new ImageTag(targetHash, link.TagName)));
+        db.Images.Remove(source);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return true;
+    }
+
     public async Task<IReadOnlyList<ImageRecord>> ListAsync(string? tag, int skip, int take, CancellationToken ct)
     {
         var query = db.Images.AsNoTracking().Include(image => image.ImageTags).ThenInclude(link => link.Tag).AsQueryable();

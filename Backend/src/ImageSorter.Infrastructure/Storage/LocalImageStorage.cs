@@ -20,11 +20,14 @@ public sealed class LocalImageStorage : IImageStorage
         {
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
                 await content.CopyToAsync(output, ct);
-            await using var input = File.OpenRead(temporary);
-            var hash = Convert.ToHexString(await SHA256.HashDataAsync(input, ct)).ToLowerInvariant();
-            var destination = Directory.EnumerateFiles(RootPath, hash + ".*").FirstOrDefault()
-                ?? Path.Combine(RootPath, hash + extension.ToLowerInvariant());
-            if (!File.Exists(destination)) File.Move(temporary, destination);
+            string hash;
+            string destination;
+            do
+            {
+                hash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+                destination = Path.Combine(RootPath, hash + extension.ToLowerInvariant());
+            } while (File.Exists(destination));
+            File.Move(temporary, destination);
             return (hash, destination);
         }
         finally
@@ -33,30 +36,16 @@ public sealed class LocalImageStorage : IImageStorage
         }
     }
 
-    public async Task<(string Hash, string Path)> CopyAsync(string hash, CancellationToken ct)
+    public Task DeleteAsync(string hash, CancellationToken ct)
     {
-        var source = await FindPathAsync(hash, ct) ?? throw new FileNotFoundException("The source image was not found.");
-        var extension = Path.GetExtension(source);
-        string duplicateHash;
-        string destination;
-        do
-        {
-            duplicateHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-            destination = Path.Combine(RootPath, duplicateHash + extension);
-        } while (File.Exists(destination));
+        ct.ThrowIfCancellationRequested();
+        if (!IsHash(hash)) return Task.CompletedTask;
 
-        try
-        {
-            await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
-            await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
-            await input.CopyToAsync(output, ct);
-            return (duplicateHash, destination);
-        }
-        catch
-        {
-            if (File.Exists(destination)) File.Delete(destination);
-            throw;
-        }
+        foreach (var path in Directory.EnumerateFiles(RootPath, hash + ".*"))
+            File.Delete(path);
+        var thumbnail = Path.Combine(RootPath, ".thumbnails", hash + ".jpg");
+        if (File.Exists(thumbnail)) File.Delete(thumbnail);
+        return Task.CompletedTask;
     }
 
     public Task<string?> FindPathAsync(string hash, CancellationToken ct)

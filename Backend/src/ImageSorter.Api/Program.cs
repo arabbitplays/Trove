@@ -1,5 +1,6 @@
 using ImageSorter.Application.Abstractions;
 using ImageSorter.Application.Images;
+using ImageSorter.Api.BackgroundServices;
 using ImageSorter.Infrastructure.Persistence;
 using ImageSorter.Infrastructure.Storage;
 using System.Diagnostics;
@@ -34,6 +35,8 @@ try
     builder.Services.AddSingleton<IClock, SystemClock>();
     builder.Services.AddScoped<ImageService>();
     builder.Services.AddScoped<TagService>();
+    builder.Services.AddScoped<DuplicateImageService>();
+    builder.Services.AddHostedService<DuplicateImageWorker>();
     builder.Services.AddControllers();
     var allowedOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:5173"];
     builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
@@ -57,18 +60,25 @@ try
         finally
         {
             timer.Stop();
-            if (failure is null)
-                app.Logger.LogInformation("HTTP {Method} {Path} returned {StatusCode} in {ElapsedMilliseconds} ms",
-                    context.Request.Method, context.Request.Path, context.Response.StatusCode, timer.ElapsedMilliseconds);
-            else
-                app.Logger.LogError(failure, "HTTP {Method} {Path} failed after {ElapsedMilliseconds} ms",
-                    context.Request.Method, context.Request.Path, timer.ElapsedMilliseconds);
+            if (!string.Equals(context.Request.Path.Value, "/api/health", StringComparison.OrdinalIgnoreCase))
+            {
+                if (failure is null)
+                    app.Logger.LogInformation("HTTP {Method} {Path} returned {StatusCode} in {ElapsedMilliseconds} ms",
+                        context.Request.Method, context.Request.Path, context.Response.StatusCode, timer.ElapsedMilliseconds);
+                else
+                    app.Logger.LogError(failure, "HTTP {Method} {Path} failed after {ElapsedMilliseconds} ms",
+                        context.Request.Method, context.Request.Path, timer.ElapsedMilliseconds);
+            }
         }
     });
 
     app.UseCors();
     await using (var scope = app.Services.CreateAsyncScope())
+    {
         await scope.ServiceProvider.GetRequiredService<ImageDbContext>().Database.EnsureCreatedAsync();
+        await scope.ServiceProvider.GetRequiredService<ImageDbContext>().Database.ExecuteSqlRawAsync(
+            "ALTER TABLE images ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT TRUE");
+    }
 
     app.MapGet("/api/health", async (ImageDbContext db, CancellationToken ct) =>
     {

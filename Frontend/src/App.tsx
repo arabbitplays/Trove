@@ -37,15 +37,6 @@ export default function App() {
     }
   }, [activeTag])
 
-  const checkDuplicates = useCallback(async (files: File[]) => {
-    const form = new FormData()
-    files.forEach(file => form.append('files', file, file.name))
-    const response = await fetch(`${API}/api/import/duplicates`, { method: 'POST', body: form })
-    if (!response.ok) throw new Error('Duplicate check failed')
-    const result = await response.json() as { duplicates: number }
-    return result.duplicates
-  }, [])
-
   useEffect(() => { void refresh() }, [refresh])
 
   useEffect(() => {
@@ -74,22 +65,21 @@ export default function App() {
     }
   }, [])
 
-  async function importFiles(files: File[], tags: string[], duplicatePolicy: 'skip' | 'rename') {
+  async function importFiles(files: File[], tags: string[]) {
     if (!files.length) return
     setImporting(true)
     setNotice('')
     let importCompleted = false
     const form = new FormData()
     files.forEach(file => form.append('files', file, file.name))
-    form.append('duplicatePolicy', duplicatePolicy)
     try {
       const response = await fetch(`${API}/api/import`, { method: 'POST', body: form })
       if (!response.ok) throw new Error('Import failed')
-      const result = await response.json() as { imported: number; duplicates: number; renamedDuplicates: number; errors: string[]; hashes: string[] }
+      const result = await response.json() as { imported: number; errors: string[]; hashes: string[] }
       importCompleted = true
       const tagResults = await Promise.all(tags.map(tag => updateTagForImages(result.hashes, tag)))
       if (tagResults.some(ok => !ok)) throw new Error('Could not apply selected tags')
-      setNotice(`Added ${result.imported}; ${result.duplicates} duplicates${result.renamedDuplicates ? `, ${result.renamedDuplicates} renamed` : ''}${result.errors.length ? `; ${result.errors.length} skipped` : ''}.`)
+      setNotice(`Added ${result.imported}${result.errors.length ? `; ${result.errors.length} skipped` : ''}.`)
       setPendingFiles(null)
       await refresh()
     } catch {
@@ -173,7 +163,6 @@ export default function App() {
       files={pendingFiles}
       tags={allTags}
       importing={importing}
-      onCheckDuplicates={checkDuplicates}
       onCancel={() => setPendingFiles(null)}
       onImport={importFiles}
     />}

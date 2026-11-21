@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using ImageSorter.Application.Abstractions;
 using ImageSorter.Domain.Entities;
 
@@ -6,7 +5,7 @@ namespace ImageSorter.Application.Images;
 
 public sealed record ImageDto(string Hash, string OriginalName, DateTimeOffset AddedAt, IReadOnlyList<string> Tags);
 public sealed record ImagePage(IReadOnlyList<ImageDto> Items, int Total, int Skip, int Take);
-public sealed record ImportResult(int Imported, int Duplicates, int RenamedDuplicates, IReadOnlyList<string> Errors, IReadOnlyList<string> Hashes);
+public sealed record ImportResult(int Imported, IReadOnlyList<string> Errors, IReadOnlyList<string> Hashes);
 
 public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, IClock clock, IImageProcessor imageProcessor)
 {
@@ -21,40 +20,10 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
         return new ImagePage(images.Select(ToDto).ToArray(), await catalog.CountAsync(NormalizeTagOrNull(tag), ct), Math.Max(0, skip), safeTake);
     }
 
-    public async Task<int> CountDuplicatesAsync(IEnumerable<(Stream Content, string Name)> files, CancellationToken ct)
+    public async Task<ImportResult> ImportAsync(IEnumerable<(Stream Content, string Name)> files, CancellationToken ct)
     {
-        await ReconcileStorageAsync(ct);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var duplicates = 0;
-        foreach (var (content, name) in files)
-        {
-            await using var input = content;
-            ct.ThrowIfCancellationRequested();
-            if (!Extensions.Contains(Path.GetExtension(Path.GetFileName(name)))) continue;
-            Stream hashInput = input;
-            try
-            {
-                using var converted = string.Equals(Path.GetExtension(name), ".heic", StringComparison.OrdinalIgnoreCase)
-                    ? imageProcessor.ConvertHeicToPng(input)
-                    : null;
-                if (converted is not null) hashInput = converted;
-                var hash = Convert.ToHexString(await SHA256.HashDataAsync(hashInput, ct)).ToLowerInvariant();
-                if (await catalog.ExistsAsync(hash, ct) || !seen.Add(hash)) duplicates++;
-            }
-            catch (IOException)
-            {
-                // Import will report this file as an error; it is not a known duplicate.
-            }
-        }
-        return duplicates;
-    }
-
-    public async Task<ImportResult> ImportAsync(IEnumerable<(Stream Content, string Name)> files, bool renameDuplicates, CancellationToken ct)
-    {
-        var imported = 0; var duplicates = 0; var errors = new List<string>();
-        var renamedDuplicates = 0;
+        var imported = 0; var errors = new List<string>();
         var importedHashes = new List<string>();
-        var duplicateHashes = new List<string>();
         foreach (var (content, name) in files)
         {
             await using var input = content;
@@ -76,28 +45,6 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
                 }
 
                 var (hash, path) = await storage.SaveAsync(importContent, extension, ct);
-                if (await catalog.ExistsAsync(hash, ct))
-                {
-                    duplicates++;
-                    if (!renameDuplicates) continue;
-
-                    var duplicate = await storage.CopyAsync(hash, ct);
-                    var renamed = await GetAvailableDuplicateNameAsync(convertedName, ct);
-                    try
-                    {
-                        await catalog.AddAsync(new ImageRecord(duplicate.Hash, ContentTypeFor(extension), renamed, clock.UtcNow), ct);
-                        imported++;
-                        renamedDuplicates++;
-                        importedHashes.Add(duplicate.Hash);
-                        duplicateHashes.Add(duplicate.Hash);
-                    }
-                    catch
-                    {
-                        if (!await catalog.ExistsAsync(duplicate.Hash, ct)) File.Delete(duplicate.Path);
-                        throw;
-                    }
-                    continue;
-                }
                 var type = ContentTypeFor(extension);
                 try
                 {
@@ -108,7 +55,6 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
                 catch
                 {
                     if (!await catalog.ExistsAsync(hash, ct)) File.Delete(path);
-                    else duplicates++;
                     throw;
                 }
             }
@@ -116,9 +62,7 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
             { errors.Add($"{name}: {e.Message}"); }
         }
         await catalog.ApplyImportTagsAsync(importedHashes, [], "new", ct);
-        foreach (var hash in duplicateHashes)
-            await catalog.SetTagAsync(hash, "duplicate", ct);
-        return new ImportResult(imported, duplicates, renamedDuplicates, errors, importedHashes);
+        return new ImportResult(imported, errors, importedHashes);
     }
 
     public Task<string?> FindImagePathAsync(string hash, CancellationToken ct) => storage.FindPathAsync(hash, ct);
@@ -155,20 +99,6 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
             if (await catalog.ExistsAsync(hash, ct)) continue;
             var extension = Path.GetExtension(path);
             await catalog.AddAsync(new ImageRecord(hash, ContentTypeFor(extension), hash + extension, new DateTimeOffset(File.GetCreationTimeUtc(path), TimeSpan.Zero)), ct);
-        }
-    }
-
-    private async Task<string> GetAvailableDuplicateNameAsync(string name, CancellationToken ct)
-    {
-        var fileName = Path.GetFileName(name);
-        var extension = Path.GetExtension(fileName);
-        var baseName = Path.GetFileNameWithoutExtension(fileName);
-        for (var number = 1; ; number++)
-        {
-            var suffix = $" ({number})";
-            var maxBaseNameLength = Math.Max(1, 255 - extension.Length - suffix.Length);
-            var candidate = $"{baseName[..Math.Min(baseName.Length, maxBaseNameLength)]}{suffix}{extension}";
-            if (!await catalog.OriginalNameExistsAsync(candidate, ct)) return candidate;
         }
     }
 

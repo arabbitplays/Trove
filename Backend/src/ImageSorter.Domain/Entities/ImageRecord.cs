@@ -18,7 +18,10 @@ public sealed class ImageRecord
     public string ContentType { get; private set; } = "application/octet-stream";
     public string OriginalName { get; private set; } = string.Empty;
     public DateTimeOffset AddedAt { get; private set; }
+    public bool Dirty { get; private set; } = true;
     public ICollection<ImageTag> ImageTags => _imageTags;
+
+    public void MarkClean() => Dirty = false;
 }
 
 public sealed class Tag

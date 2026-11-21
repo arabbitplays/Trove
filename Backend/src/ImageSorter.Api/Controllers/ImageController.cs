@@ -48,8 +48,7 @@ public sealed class ImageController(ImageService service) : ControllerBase
         var files = form.Files.Select(file => (file.OpenReadStream(), file.FileName));
         try
         {
-            var renameDuplicates = string.Equals(form["duplicatePolicy"], "rename", StringComparison.OrdinalIgnoreCase);
-            return Ok(await service.ImportAsync(files, renameDuplicates, ct));
+            return Ok(await service.ImportAsync(files, ct));
         }
         catch (ArgumentException error)
         {
@@ -57,13 +56,4 @@ public sealed class ImageController(ImageService service) : ControllerBase
         }
     }
 
-    [HttpPost("import/duplicates")]
-    public async Task<IActionResult> CountDuplicates(CancellationToken ct)
-    {
-        if (!Request.HasFormContentType) return BadRequest(new { error = "Expected multipart form data." });
-
-        var form = await Request.ReadFormAsync(ct);
-        var files = form.Files.Select(file => (file.OpenReadStream(), file.FileName));
-        return Ok(new { duplicates = await service.CountDuplicatesAsync(files, ct) });
-    }
 }
