@@ -1,0 +1,27 @@
+# Based on https://github.com/github/gitignore/blob/main/Node.gitignore
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# Logs and test coverage
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+coverage/
+*.lcov
+.nyc_output/
+
+# TypeScript and Vite cache
+*.tsbuildinfo
+.vite/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Local environment files
+.env
+.env.*
+!.env.example

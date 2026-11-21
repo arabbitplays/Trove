@@ -1,0 +1,48 @@
+# Based on https://github.com/github/gitignore/blob/main/Dotnet.gitignore
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+project.lock.json
+project.fragment.lock.json
+
+# ASP.NET scaffolding
+ScaffoldingReadMe.txt
+
+# Visual Studio user and cache files
+.vs/
+*.user
+*.suo
+
+# NuGet packages and build logs
+*.nupkg
+*.snupkg
+*.binlog
+[Bb]uild[Ll]og.*
+
+# Test results
+[Tt]est[Rr]esult*/
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+
+# Temporary editor files
+~$*
+*~
+CodeCoverage/
+
+# Local environment
+.env
