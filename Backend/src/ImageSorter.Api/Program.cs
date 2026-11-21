@@ -30,6 +30,7 @@ try
         .ConfigureWarnings(warnings => warnings.Log((RelationalEventId.CommandExecuted, Microsoft.Extensions.Logging.LogLevel.Trace))));
     builder.Services.AddScoped<IImageCatalog, EfImageCatalog>();
     builder.Services.AddSingleton<IImageStorage>(_ => new LocalImageStorage(imagePath));
+    builder.Services.AddSingleton<IImageProcessor, MagickImageProcessor>();
     builder.Services.AddSingleton<IClock, SystemClock>();
     builder.Services.AddScoped<ImageService>();
     builder.Services.AddScoped<TagService>();

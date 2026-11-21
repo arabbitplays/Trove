@@ -8,7 +8,7 @@ public sealed record ImageDto(string Hash, string OriginalName, DateTimeOffset A
 public sealed record ImagePage(IReadOnlyList<ImageDto> Items, int Total, int Skip, int Take);
 public sealed record ImportResult(int Imported, int Duplicates, int RenamedDuplicates, IReadOnlyList<string> Errors, IReadOnlyList<string> Hashes);
 
-public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, IClock clock)
+public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, IClock clock, IImageProcessor imageProcessor)
 {
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
         { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".avif", ".heic" };
@@ -31,8 +31,20 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
             await using var input = content;
             ct.ThrowIfCancellationRequested();
             if (!Extensions.Contains(Path.GetExtension(Path.GetFileName(name)))) continue;
-            var hash = Convert.ToHexString(await SHA256.HashDataAsync(input, ct)).ToLowerInvariant();
-            if (await catalog.ExistsAsync(hash, ct) || !seen.Add(hash)) duplicates++;
+            Stream hashInput = input;
+            try
+            {
+                using var converted = string.Equals(Path.GetExtension(name), ".heic", StringComparison.OrdinalIgnoreCase)
+                    ? imageProcessor.ConvertHeicToPng(input)
+                    : null;
+                if (converted is not null) hashInput = converted;
+                var hash = Convert.ToHexString(await SHA256.HashDataAsync(hashInput, ct)).ToLowerInvariant();
+                if (await catalog.ExistsAsync(hash, ct) || !seen.Add(hash)) duplicates++;
+            }
+            catch (IOException)
+            {
+                // Import will report this file as an error; it is not a known duplicate.
+            }
         }
         return duplicates;
     }
@@ -51,14 +63,26 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
             if (!Extensions.Contains(extension)) { errors.Add($"{name}: unsupported image type"); continue; }
             try
             {
-                var (hash, path) = await storage.SaveAsync(input, extension, ct);
+                var convertedName = Path.GetFileName(name);
+                Stream importContent = input;
+                using var converted = string.Equals(extension, ".heic", StringComparison.OrdinalIgnoreCase)
+                    ? imageProcessor.ConvertHeicToPng(input)
+                    : null;
+                if (converted is not null)
+                {
+                    importContent = converted;
+                    extension = ".png";
+                    convertedName = Path.ChangeExtension(convertedName, ".png");
+                }
+
+                var (hash, path) = await storage.SaveAsync(importContent, extension, ct);
                 if (await catalog.ExistsAsync(hash, ct))
                 {
                     duplicates++;
                     if (!renameDuplicates) continue;
 
                     var duplicate = await storage.CopyAsync(hash, ct);
-                    var renamed = await GetAvailableDuplicateNameAsync(name, ct);
+                    var renamed = await GetAvailableDuplicateNameAsync(convertedName, ct);
                     try
                     {
                         await catalog.AddAsync(new ImageRecord(duplicate.Hash, ContentTypeFor(extension), renamed, clock.UtcNow), ct);
@@ -77,7 +101,7 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
                 var type = ContentTypeFor(extension);
                 try
                 {
-                    await catalog.AddAsync(new ImageRecord(hash, type, Path.GetFileName(name), clock.UtcNow), ct);
+                    await catalog.AddAsync(new ImageRecord(hash, type, convertedName, clock.UtcNow), ct);
                     imported++;
                     importedHashes.Add(hash);
                 }
@@ -98,6 +122,31 @@ public sealed class ImageService(IImageCatalog catalog, IImageStorage storage, I
     }
 
     public Task<string?> FindImagePathAsync(string hash, CancellationToken ct) => storage.FindPathAsync(hash, ct);
+
+    public async Task<byte[]?> GetThumbnailAsync(string hash, CancellationToken ct)
+    {
+        var imagePath = await storage.FindPathAsync(hash, ct);
+        if (imagePath is null) return null;
+
+        var thumbnailDirectory = Path.Combine(storage.RootPath, ".thumbnails");
+        Directory.CreateDirectory(thumbnailDirectory);
+        var thumbnailPath = Path.Combine(thumbnailDirectory, hash + ".jpg");
+        if (File.Exists(thumbnailPath)) return await File.ReadAllBytesAsync(thumbnailPath, ct);
+
+        var thumbnail = imageProcessor.CreateJpegThumbnail(imagePath, 480);
+        var temporaryPath = Path.Combine(thumbnailDirectory, $".{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllBytesAsync(temporaryPath, thumbnail, ct);
+            File.Move(temporaryPath, thumbnailPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+
+        return thumbnail;
+    }
 
     private async Task ReconcileStorageAsync(CancellationToken ct)
     {

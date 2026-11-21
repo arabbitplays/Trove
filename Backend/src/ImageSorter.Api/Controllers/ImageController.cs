@@ -11,6 +11,13 @@ public sealed class ImageController(ImageService service) : ControllerBase
     public async Task<IActionResult> List([FromQuery] string? tag, [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct) =>
         Ok(await service.ListAsync(tag, skip ?? 0, take ?? 50, ct));
 
+    [HttpGet("images/{hash}/thumbnail")]
+    public async Task<IActionResult> Thumbnail(string hash, CancellationToken ct)
+    {
+        var thumbnail = await service.GetThumbnailAsync(hash, ct);
+        return thumbnail is null ? NotFound() : File(thumbnail, "image/jpeg");
+    }
+
     [HttpGet("images/{hash}/content")]
     public async Task<IActionResult> Content(string hash, CancellationToken ct)
     {

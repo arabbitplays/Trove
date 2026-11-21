@@ -202,7 +202,7 @@ export default function App() {
       <p>{query || activeTag ? 'Try a different search or filter.' : 'Import a folder to add images to your library.'}</p>
     </section> : <section className="image-grid" aria-label="Image library">
       {visible.map(item => <article className="image-card" key={item.hash}>
-        <img className="image" src={`${API}/api/images/${item.hash}/content`} alt={item.originalName} loading="lazy" />
+        <img className="image" src={`${API}/api/images/${item.hash}/thumbnail`} alt={item.originalName} loading="lazy" />
         <div className="image-details">
           <div className="filename" title={item.originalName}>{item.originalName}</div>
           <div className="card-tags">
