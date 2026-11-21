@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Menu, Play } from 'lucide-react'
+import { Menu, Moon, Play, Sun } from 'lucide-react'
 import ImportPopup from './ImportPopup'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
@@ -14,6 +14,7 @@ export default function App() {
   const [selectedHash, setSelectedHash] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarMounted, setSidebarMounted] = useState(false)
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('content-theme') === 'dark')
   const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({})
   const [tagShortcuts, setTagShortcuts] = useState<Record<string, string>>(() => {
     try {
@@ -62,6 +63,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('content-tag-shortcuts', JSON.stringify(tagShortcuts))
   }, [tagShortcuts])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+    localStorage.setItem('content-theme', darkMode ? 'dark' : 'light')
+  }, [darkMode])
 
   useEffect(() => {
     let active = true
@@ -354,6 +360,10 @@ export default function App() {
           picker.current?.click()
         }} disabled={importing}>
           {importing ? 'Importing…' : 'Import folder'}
+        </button>
+        <button className="button sidebar-theme-toggle" type="button" onClick={() => setDarkMode(value => !value)} aria-pressed={darkMode}>
+          {darkMode ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+          {darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
         </button>
       </aside>
     </div>}
