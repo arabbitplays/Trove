@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import ImportPopup from './ImportPopup'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
-type ImageItem = { hash: string; originalName: string; addedAt: string; tags: string[] }
-type Page = { items: ImageItem[]; total: number; skip: number; take: number }
+type ContentItem = { hash: string; originalName: string; addedAt: string; tags: string[] }
+type Page = { items: ContentItem[]; total: number; skip: number; take: number }
 
 export default function App() {
   const [page, setPage] = useState<Page>({ items: [], total: 0, skip: 0, take: 48 })
@@ -23,12 +23,12 @@ export default function App() {
     try {
       const params = new URLSearchParams({ skip: '0', take: '100' })
       if (tag) params.set('tag', tag)
-      const [imagesResponse, tagsResponse] = await Promise.all([
-        fetch(`${API}/api/images?${params}`),
+      const [contentsResponse, tagsResponse] = await Promise.all([
+        fetch(`${API}/api/contents?${params}`),
         fetch(`${API}/api/tags`),
       ])
-      if (!imagesResponse.ok || !tagsResponse.ok) throw new Error('Request failed')
-      setPage(await imagesResponse.json() as Page)
+      if (!contentsResponse.ok || !tagsResponse.ok) throw new Error('Request failed')
+      setPage(await contentsResponse.json() as Page)
       setAllTags(await tagsResponse.json() as string[])
     } catch {
       setApiAvailable(false)
@@ -77,7 +77,7 @@ export default function App() {
       if (!response.ok) throw new Error('Import failed')
       const result = await response.json() as { imported: number; errors: string[]; hashes: string[] }
       importCompleted = true
-      const tagResults = await Promise.all(tags.map(tag => updateTagForImages(result.hashes, tag)))
+      const tagResults = await Promise.all(tags.map(tag => updateTagForContent(result.hashes, tag)))
       if (tagResults.some(ok => !ok)) throw new Error('Could not apply selected tags')
       setNotice(`Added ${result.imported}${result.errors.length ? `; ${result.errors.length} skipped` : ''}.`)
       setPendingFiles(null)
@@ -85,7 +85,7 @@ export default function App() {
     } catch {
       setPendingFiles(null)
       setNotice(importCompleted
-        ? 'Images imported, but some selected tags could not be applied.'
+        ? 'Files imported, but some selected tags could not be applied.'
         : 'Import failed. Check the API connection and try again.')
       if (importCompleted) await refresh()
     } finally {
@@ -95,7 +95,7 @@ export default function App() {
   }
 
   async function updateTag(hash: string, tag: string, remove = false) {
-    const ok = await updateTagForImages([hash], tag, remove)
+    const ok = await updateTagForContent([hash], tag, remove)
     if (!ok) {
       setNotice('Could not update this tag.')
       return
@@ -104,7 +104,7 @@ export default function App() {
     await refresh()
   }
 
-  async function updateTagForImages(hashes: string[], tag: string, remove = false) {
+  async function updateTagForContent(hashes: string[], tag: string, remove = false) {
     if (!hashes.length) return true
     const url = `${API}/api/tags/${encodeURIComponent(tag)}`
     const response = await fetch(url, {
@@ -124,13 +124,13 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <a className="brand" href="#">Image Manager</a>
+      <a className="brand" href="#">Content Manager</a>
       <div className="top-actions">
         <input
           className="search"
           type="search"
-          aria-label="Search images"
-          placeholder="Search images"
+          aria-label="Search media"
+          placeholder="Search media"
           value={query}
           onChange={event => setQuery(event.target.value)}
         />
@@ -142,7 +142,7 @@ export default function App() {
           className="visually-hidden"
           type="file"
           multiple
-          accept="image/*"
+          accept="image/*,video/*"
           onChange={event => {
             const files = Array.from(event.target.files ?? [])
             if (files.length) setPendingFiles(files)
@@ -168,7 +168,7 @@ export default function App() {
     />}
 
     <section className="library-heading">
-      <h1>Images</h1>
+      <h1>Library</h1>
       <span>{page.total.toLocaleString()} total</span>
     </section>
 
@@ -186,13 +186,13 @@ export default function App() {
       <button className="text-button" onClick={() => setNotice('')} aria-label="Dismiss message">Dismiss</button>
     </div>}
 
-    {loading ? <p className="state">Loading images…</p> : visible.length === 0 ? <section className="state empty-state">
-      <h2>{query || activeTag ? 'No images found' : 'No images yet'}</h2>
-      <p>{query || activeTag ? 'Try a different search or filter.' : 'Import a folder to add images to your library.'}</p>
-    </section> : <section className="image-grid" aria-label="Image library">
-      {visible.map(item => <article className="image-card" key={item.hash}>
-        <img className="image" src={`${API}/api/images/${item.hash}/thumbnail`} alt={item.originalName} loading="lazy" />
-        <div className="image-details">
+    {loading ? <p className="state">Loading library…</p> : visible.length === 0 ? <section className="state empty-state">
+        <h2>{query || activeTag ? 'No media found' : 'No media yet'}</h2>
+        <p>{query || activeTag ? 'Try a different search or filter.' : 'Import a folder to add images and videos to your library.'}</p>
+    </section> : <section className="content-grid" aria-label="Media library">
+      {visible.map(item => <article className="content-card" key={item.hash}>
+        <img className="content-preview" src={`${API}/api/contents/${item.hash}/thumbnail`} alt={item.originalName} loading="lazy" />
+        <div className="content-details">
           <div className="filename" title={item.originalName}>{item.originalName}</div>
           <div className="card-tags">
             {item.tags.map(tag => <button
@@ -228,7 +228,7 @@ export default function App() {
 async function loadMore(page: Page, tag: string, setPage: (next: Page | ((current: Page) => Page)) => void) {
   const params = new URLSearchParams({ skip: String(page.items.length), take: '100' })
   if (tag) params.set('tag', tag)
-  const response = await fetch(`${API}/api/images?${params}`)
+  const response = await fetch(`${API}/api/contents?${params}`)
   if (!response.ok) return
   const next = await response.json() as Page
   setPage(current => ({ ...next, items: [...current.items, ...next.items] }))

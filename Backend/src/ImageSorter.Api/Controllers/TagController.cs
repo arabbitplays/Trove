@@ -1,4 +1,4 @@
-using ImageSorter.Application.Images;
+using ImageSorter.Application.Content;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ImageSorter.Api.Controllers;

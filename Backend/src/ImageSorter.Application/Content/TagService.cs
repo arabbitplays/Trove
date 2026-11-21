@@ -1,8 +1,8 @@
 using ImageSorter.Application.Abstractions;
 
-namespace ImageSorter.Application.Images;
+namespace ImageSorter.Application.Content;
 
-public sealed class TagService(IImageCatalog catalog)
+public sealed class TagService(IContentCatalog catalog)
 {
     public Task<IReadOnlyList<string>> ListAsync(CancellationToken ct) => catalog.GetTagsAsync(ct);
 
@@ -16,7 +16,7 @@ public sealed class TagService(IImageCatalog catalog)
         foreach (var hash in distinctHashes)
         {
             if (!await catalog.ExistsAsync(hash, ct))
-                throw new KeyNotFoundException($"Image '{hash}' was not found.");
+                throw new KeyNotFoundException($"Content '{hash}' was not found.");
         }
 
         foreach (var hash in distinctHashes)

@@ -1,12 +1,12 @@
 namespace ImageSorter.Domain.Entities;
 
-public sealed class ImageRecord
+public sealed class ContentRecord
 {
-    private readonly List<ImageTag> _imageTags = [];
+    private readonly List<ContentTag> _contentTags = [];
 
-    private ImageRecord() { }
+    private ContentRecord() { }
 
-    public ImageRecord(string hash, string contentType, string originalName, DateTimeOffset addedAt)
+    public ContentRecord(string hash, string contentType, string originalName, DateTimeOffset addedAt)
     {
         Hash = hash;
         ContentType = contentType;
@@ -19,7 +19,7 @@ public sealed class ImageRecord
     public string OriginalName { get; private set; } = string.Empty;
     public DateTimeOffset AddedAt { get; private set; }
     public bool Dirty { get; private set; } = true;
-    public ICollection<ImageTag> ImageTags => _imageTags;
+    public ICollection<ContentTag> ContentTags => _contentTags;
 
     public void MarkClean() => Dirty = false;
 }
@@ -29,15 +29,15 @@ public sealed class Tag
     private Tag() { }
     public Tag(string name) => Name = name;
     public string Name { get; private set; } = string.Empty;
-    public ICollection<ImageTag> ImageTags { get; } = new List<ImageTag>();
+    public ICollection<ContentTag> ContentTags { get; } = new List<ContentTag>();
 }
 
-public sealed class ImageTag
+public sealed class ContentTag
 {
-    private ImageTag() { }
-    public ImageTag(string imageHash, string tagName) { ImageHash = imageHash; TagName = tagName; }
-    public string ImageHash { get; private set; } = string.Empty;
-    public ImageRecord Image { get; private set; } = null!;
+    private ContentTag() { }
+    public ContentTag(string contentHash, string tagName) { ContentHash = contentHash; TagName = tagName; }
+    public string ContentHash { get; private set; } = string.Empty;
+    public ContentRecord Content { get; private set; } = null!;
     public string TagName { get; private set; } = string.Empty;
     public Tag Tag { get; private set; } = null!;
 }

@@ -1,5 +1,5 @@
 using ImageSorter.Application.Abstractions;
-using ImageSorter.Application.Images;
+using ImageSorter.Application.Content;
 using ImageSorter.Api.BackgroundServices;
 using ImageSorter.Infrastructure.Persistence;
 using ImageSorter.Infrastructure.Storage;
@@ -21,22 +21,25 @@ try
     builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", Microsoft.Extensions.Logging.LogLevel.Trace);
     builder.Host.UseNLog();
     builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 2L * 1024 * 1024 * 1024);
-    var connectionString = builder.Configuration.GetConnectionString("Images")
+    var connectionString = builder.Configuration.GetConnectionString("Contents")
+        ?? builder.Configuration.GetConnectionString("Images")
         ?? "Host=localhost;Port=5432;Database=imagemanager;Username=imagemanager;Password=imagemanager";
-    var imagePath = builder.Configuration["ImageStorage:Path"]
+    var contentPath = builder.Configuration["ContentStorage:Path"]
+        ?? builder.Configuration["ImageStorage:Path"]
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Resources", "Images");
 
-    builder.Services.AddDbContext<ImageDbContext>(options => options
+    builder.Services.AddDbContext<ContentDbContext>(options => options
         .UseNpgsql(connectionString)
         .ConfigureWarnings(warnings => warnings.Log((RelationalEventId.CommandExecuted, Microsoft.Extensions.Logging.LogLevel.Trace))));
-    builder.Services.AddScoped<IImageCatalog, EfImageCatalog>();
-    builder.Services.AddSingleton<IImageStorage>(_ => new LocalImageStorage(imagePath));
+    builder.Services.AddScoped<IContentCatalog, EfContentCatalog>();
+    builder.Services.AddSingleton<IContentStorage>(_ => new LocalContentStorage(contentPath));
     builder.Services.AddSingleton<IImageProcessor, MagickImageProcessor>();
+    builder.Services.AddSingleton<IVideoProcessor, FfmpegVideoProcessor>();
     builder.Services.AddSingleton<IClock, SystemClock>();
-    builder.Services.AddScoped<ImageService>();
+    builder.Services.AddScoped<ContentService>();
     builder.Services.AddScoped<TagService>();
-    builder.Services.AddScoped<DuplicateImageService>();
-    builder.Services.AddHostedService<DuplicateImageWorker>();
+    builder.Services.AddScoped<DuplicateContentService>();
+    builder.Services.AddHostedService<DuplicateContentWorker>();
     builder.Services.AddControllers();
     var allowedOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:5173"];
     builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
@@ -75,12 +78,27 @@ try
     app.UseCors();
     await using (var scope = app.Services.CreateAsyncScope())
     {
-        await scope.ServiceProvider.GetRequiredService<ImageDbContext>().Database.EnsureCreatedAsync();
-        await scope.ServiceProvider.GetRequiredService<ImageDbContext>().Database.ExecuteSqlRawAsync(
-            "ALTER TABLE images ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT TRUE");
+        await scope.ServiceProvider.GetRequiredService<ContentDbContext>().Database.EnsureCreatedAsync();
+        await scope.ServiceProvider.GetRequiredService<ContentDbContext>().Database.ExecuteSqlRawAsync(
+            """
+            DO $$
+            BEGIN
+                IF to_regclass('public.contents') IS NULL AND to_regclass('public.images') IS NOT NULL THEN
+                    ALTER TABLE images RENAME TO contents;
+                END IF;
+                IF to_regclass('public.content_tags') IS NULL AND to_regclass('public.image_tags') IS NOT NULL THEN
+                    ALTER TABLE image_tags RENAME TO content_tags;
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'content_tags' AND column_name = 'ImageHash')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'content_tags' AND column_name = 'ContentHash') THEN
+                    ALTER TABLE content_tags RENAME COLUMN "ImageHash" TO "ContentHash";
+                END IF;
+            END $$;
+            ALTER TABLE contents ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT TRUE;
+            """);
     }
 
-    app.MapGet("/api/health", async (ImageDbContext db, CancellationToken ct) =>
+    app.MapGet("/api/health", async (ContentDbContext db, CancellationToken ct) =>
     {
         var available = false;
         try { available = await db.Database.CanConnectAsync(ct); }
@@ -93,7 +111,7 @@ try
 }
 catch (Exception exception)
 {
-    bootstrapLogger.Error(exception, "Image Manager API stopped because of an unhandled exception");
+    bootstrapLogger.Error(exception, "Content Manager API stopped because of an unhandled exception");
     throw;
 }
 finally

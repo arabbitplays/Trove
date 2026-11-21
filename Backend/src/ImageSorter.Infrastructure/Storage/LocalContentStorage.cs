@@ -3,9 +3,9 @@ using ImageSorter.Application.Abstractions;
 
 namespace ImageSorter.Infrastructure.Storage;
 
-public sealed class LocalImageStorage : IImageStorage
+public sealed class LocalContentStorage : IContentStorage
 {
-    public LocalImageStorage(string rootPath)
+    public LocalContentStorage(string rootPath)
     {
         RootPath = Path.GetFullPath(rootPath);
         Directory.CreateDirectory(RootPath);

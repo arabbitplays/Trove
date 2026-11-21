@@ -2,23 +2,23 @@ using ImageSorter.Domain.Entities;
 
 namespace ImageSorter.Application.Abstractions;
 
-public interface IImageCatalog
+public interface IContentCatalog
 {
     Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken);
-    Task AddAsync(ImageRecord image, CancellationToken cancellationToken);
-    Task<IReadOnlyList<ImageRecord>> GetDirtyImagesAsync(CancellationToken cancellationToken);
-    Task<IReadOnlyList<string>> GetImageHashesAsync(CancellationToken cancellationToken);
+    Task AddAsync(ContentRecord content, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ContentRecord>> GetDirtyContentAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<ContentRecord>> GetContentAsync(CancellationToken cancellationToken);
     Task MarkCleanAsync(string hash, CancellationToken cancellationToken);
     Task<bool> MergeTagsAndDeleteAsync(string sourceHash, string targetHash, CancellationToken cancellationToken);
-    Task<IReadOnlyList<ImageRecord>> ListAsync(string? tag, int skip, int take, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ContentRecord>> ListAsync(string? tag, int skip, int take, CancellationToken cancellationToken);
     Task<int> CountAsync(string? tag, CancellationToken cancellationToken);
     Task<IReadOnlyList<string>> GetTagsAsync(CancellationToken cancellationToken);
     Task SetTagAsync(string hash, string tag, CancellationToken cancellationToken);
     Task RemoveTagAsync(string hash, string tag, CancellationToken cancellationToken);
-    Task ApplyImportTagsAsync(IReadOnlyList<string> imageHashes, IReadOnlyList<string> tags, string newTag, CancellationToken cancellationToken);
+    Task ApplyImportTagsAsync(IReadOnlyList<string> contentHashes, IReadOnlyList<string> tags, string newTag, CancellationToken cancellationToken);
 }
 
-public interface IImageStorage
+public interface IContentStorage
 {
     string RootPath { get; }
     Task<(string Hash, string Path)> SaveAsync(Stream content, string extension, CancellationToken cancellationToken);

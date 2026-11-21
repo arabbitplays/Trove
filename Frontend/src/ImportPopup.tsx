@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 
 const supportedExtensions = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.avif', '.heic',
+  '.mp4', '.m4v', '.mov', '.avi', '.mkv', '.webm', '.mpg', '.mpeg', '.3gp',
 ])
 
 type ImportPopupProps = {
@@ -47,8 +48,8 @@ export default function ImportPopup({ files, tags, importing, onCancel, onImport
     <section className="import-popup" role="dialog" aria-modal="true" aria-labelledby="import-title">
       <header className="popup-header">
         <div>
-          <h2 id="import-title">Import images</h2>
-          <p>{importableFiles.length} supported image{importableFiles.length === 1 ? '' : 's'} selected</p>
+          <h2 id="import-title">Import media</h2>
+          <p>{importableFiles.length} supported file{importableFiles.length === 1 ? '' : 's'} selected</p>
         </div>
         <button className="text-button" type="button" onClick={onCancel} disabled={importing}>Close</button>
       </header>
@@ -57,7 +58,7 @@ export default function ImportPopup({ files, tags, importing, onCancel, onImport
         {files.length - importableFiles.length} unsupported file{files.length - importableFiles.length === 1 ? ' will' : 's will'} be skipped.
       </p>}
       <section className="popup-tag-section">
-        <h3>Tags for all imported images</h3>
+        <h3>Tags for all imported files</h3>
         {availableTags.length > 0 ? <div className="popup-tag-list">
           {availableTags.map(tag => <label className="popup-tag-option" key={tag}>
             <input type="checkbox" checked={selectedTags.includes(tag)} onChange={() => toggleTag(tag)} />
@@ -89,7 +90,7 @@ export default function ImportPopup({ files, tags, importing, onCancel, onImport
           type="button"
           onClick={() => void onImport(importableFiles, selectedTags)}
           disabled={importing || importableFiles.length === 0}
-        >{importing ? 'Importing…' : `Import ${importableFiles.length} image${importableFiles.length === 1 ? '' : 's'}`}</button>
+        >{importing ? 'Importing…' : `Import ${importableFiles.length} file${importableFiles.length === 1 ? '' : 's'}`}</button>
       </footer>
     </section>
   </div>

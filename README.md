@@ -1,10 +1,10 @@
-# Image Manager
+# Content Manager
 
-A local full-stack image library built with PostgreSQL, ASP.NET Core 8, and React with TypeScript. The backend stores original image files in `~/Resources/Images`, named by lowercase SHA-256 hash plus the original extension. PostgreSQL stores each hash, its first-added timestamp, filename, content type, and normalized tag assignments. The library is ordered newest first.
+A local full-stack media library built with PostgreSQL, ASP.NET Core 8, and React with TypeScript. The backend stores original media files in `~/Resources/Images`, named by a lowercase random ID plus the original extension. PostgreSQL stores each ID, its first-added timestamp, filename, content type, and normalized tag assignments. The library is ordered newest first.
 
 ## Requirements
 
-- Nix with flakes enabled, or .NET 8 SDK, Node.js 22, and PostgreSQL
+- Nix with flakes enabled, or .NET 8 SDK, Node.js 22, PostgreSQL, FFmpeg, and FFprobe
 - A modern browser
 
 ## Run locally
@@ -33,20 +33,20 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>, choose **Import images**, and select a folder. The browser uploads its image files to the API. Identical image bytes are deduplicated by SHA-256. The UI can search filenames and tags, filter by a tag, and add or remove per-image tags.
+Open <http://localhost:5173>, choose **Import folder**, and select a folder. The browser uploads supported images and videos. The background worker merges pixel-identical images and videos separately; for videos it compares duration before decoding frames. The UI can search filenames and tags, filter by a tag, and add or remove per-file tags.
 
 ## Configuration
 
-The default PostgreSQL connection is `Host=localhost;Port=5432;Database=imagemanager;Username=imagemanager;Password=imagemanager`. Override the connection with `ConnectionStrings__Images` if needed. Set `ImageStorage__Path` to use another image directory. The API allows the frontend origin `http://localhost:5173`; set `Cors__Origins__0` to allow a different origin. Set `VITE_API_URL` before starting Vite if the API is at a different address.
+The default PostgreSQL connection is `Host=localhost;Port=5432;Database=imagemanager;Username=imagemanager;Password=imagemanager`. Override it with `ConnectionStrings__Contents` (the legacy `ConnectionStrings__Images` setting is still accepted). Set `ContentStorage__Path` to use another media directory; the legacy `ImageStorage__Path` setting is still accepted. The API allows the frontend origin `http://localhost:5173`; set `Cors__Origins__0` to allow a different origin. Set `VITE_API_URL` before starting Vite if the API is at a different address.
 
 ## Project structure
 
-- `Backend/src/ImageSorter.Domain`: image and tag entities.
+- `Backend/src/ImageSorter.Domain`: content and tag entities.
 - `Backend/src/ImageSorter.Application`: use cases and persistence/storage interfaces.
 - `Backend/src/ImageSorter.Infrastructure`: EF Core / Npgsql and local filesystem storage.
 - `Backend/src/ImageSorter.Api`: HTTP endpoints and dependency configuration.
 - `Frontend`: React and TypeScript client.
 
-The database uses `images`, `tags`, and `image_tags` tables. This normalized model keeps filtering efficient and leaves room for more image metadata. The API also reconciles hash-named image files already in the image directory into the catalog when listing the collection.
+The database uses `contents`, `tags`, and `content_tags` tables. On startup, the API renames the legacy `images` and `image_tags` tables and their `ImageHash` column in place, preserving existing rows and tag assignments. The API also reconciles hash-named files already in the media directory into the catalog when listing the collection.
 
-Supported extensions are JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, and HEIC. Files are stored without transcoding.
+Supported image extensions are JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, and HEIC. Supported video extensions are MP4, M4V, MOV, AVI, MKV, WebM, MPG, MPEG, and 3GP. HEIC images are converted to PNG; other files are stored without transcoding. FFmpeg and FFprobe must be available on `PATH` for video thumbnails and duplicate checks.
