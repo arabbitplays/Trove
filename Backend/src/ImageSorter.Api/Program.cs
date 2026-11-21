@@ -32,6 +32,8 @@ try
     builder.Services.AddSingleton<IImageStorage>(_ => new LocalImageStorage(imagePath));
     builder.Services.AddSingleton<IClock, SystemClock>();
     builder.Services.AddScoped<ImageService>();
+    builder.Services.AddScoped<TagService>();
+    builder.Services.AddControllers();
     var allowedOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:5173"];
     builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
     builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options => options.MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024);
@@ -74,35 +76,7 @@ try
         catch { }
         return Results.Json(new { status = available ? "ok" : "unavailable" }, statusCode: available ? 200 : 503);
     });
-    app.MapGet("/api/images", async (string? tag, int? skip, int? take, ImageService service, CancellationToken ct) =>
-        Results.Ok(await service.ListAsync(tag, skip ?? 0, take ?? 50, ct)));
-    app.MapGet("/api/tags", async (ImageService service, CancellationToken ct) => Results.Ok(await service.GetTagsAsync(ct)));
-    app.MapGet("/api/images/{hash}/content", async (string hash, ImageService service, CancellationToken ct) =>
-    {
-        var path = await service.FindImagePathAsync(hash, ct);
-        if (path is null) return Results.NotFound();
-        var contentType = Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".jpg" or ".jpeg" => "image/jpeg", ".png" => "image/png", ".gif" => "image/gif", ".webp" => "image/webp",
-            ".bmp" => "image/bmp", ".tif" or ".tiff" => "image/tiff", ".avif" => "image/avif", ".heic" => "image/heic", _ => "application/octet-stream"
-        };
-        return Results.File(path, contentType);
-    });
-    app.MapPost("/api/import", async (HttpRequest request, ImageService service, CancellationToken ct) =>
-    {
-        if (!request.HasFormContentType) return Results.BadRequest(new { error = "Expected multipart form data." });
-        var form = await request.ReadFormAsync(ct);
-        var files = form.Files.Select(file => (file.OpenReadStream(), file.FileName));
-        return Results.Ok(await service.ImportAsync(files, ct));
-    });
-    app.MapPut("/api/images/{hash}/tags/{tag}", async (string hash, string tag, ImageService service, CancellationToken ct) =>
-    {
-        try { await service.AddTagAsync(hash, tag, ct); return Results.NoContent(); }
-        catch (KeyNotFoundException) { return Results.NotFound(); }
-        catch (ArgumentException error) { return Results.BadRequest(new { error = error.Message }); }
-    });
-    app.MapDelete("/api/images/{hash}/tags/{tag}", async (string hash, string tag, ImageService service, CancellationToken ct) =>
-    { await service.RemoveTagAsync(hash, tag, ct); return Results.NoContent(); });
+    app.MapControllers();
 
     app.Run();
 }

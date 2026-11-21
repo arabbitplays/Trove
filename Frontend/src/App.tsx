@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ImportPopup from './ImportPopup'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
 type ImageItem = { hash: string; originalName: string; addedAt: string; tags: string[] }
@@ -12,6 +13,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [apiAvailable, setApiAvailable] = useState<boolean | null>(null)
   const [importing, setImporting] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null)
   const [notice, setNotice] = useState('')
   const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({})
   const picker = useRef<HTMLInputElement>(null)
@@ -34,6 +36,15 @@ export default function App() {
       setLoading(false)
     }
   }, [activeTag])
+
+  const checkDuplicates = useCallback(async (files: File[]) => {
+    const form = new FormData()
+    files.forEach(file => form.append('files', file, file.name))
+    const response = await fetch(`${API}/api/import/duplicates`, { method: 'POST', body: form })
+    if (!response.ok) throw new Error('Duplicate check failed')
+    const result = await response.json() as { duplicates: number }
+    return result.duplicates
+  }, [])
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -63,20 +74,30 @@ export default function App() {
     }
   }, [])
 
-  async function importFiles(files: FileList | null) {
-    if (!files?.length) return
+  async function importFiles(files: File[], tags: string[], duplicatePolicy: 'skip' | 'rename') {
+    if (!files.length) return
     setImporting(true)
     setNotice('')
+    let importCompleted = false
     const form = new FormData()
-    Array.from(files).forEach(file => form.append('files', file, file.name))
+    files.forEach(file => form.append('files', file, file.name))
+    form.append('duplicatePolicy', duplicatePolicy)
     try {
       const response = await fetch(`${API}/api/import`, { method: 'POST', body: form })
       if (!response.ok) throw new Error('Import failed')
-      const result = await response.json() as { imported: number; duplicates: number; errors: string[] }
-      setNotice(`Added ${result.imported}; ${result.duplicates} duplicates${result.errors.length ? `; ${result.errors.length} skipped` : ''}.`)
+      const result = await response.json() as { imported: number; duplicates: number; renamedDuplicates: number; errors: string[]; hashes: string[] }
+      importCompleted = true
+      const tagResults = await Promise.all(tags.map(tag => updateTagForImages(result.hashes, tag)))
+      if (tagResults.some(ok => !ok)) throw new Error('Could not apply selected tags')
+      setNotice(`Added ${result.imported}; ${result.duplicates} duplicates${result.renamedDuplicates ? `, ${result.renamedDuplicates} renamed` : ''}${result.errors.length ? `; ${result.errors.length} skipped` : ''}.`)
+      setPendingFiles(null)
       await refresh()
     } catch {
-      setNotice('Import failed. Check the API connection and try again.')
+      setPendingFiles(null)
+      setNotice(importCompleted
+        ? 'Images imported, but some selected tags could not be applied.'
+        : 'Import failed. Check the API connection and try again.')
+      if (importCompleted) await refresh()
     } finally {
       setImporting(false)
       if (picker.current) picker.current.value = ''
@@ -84,14 +105,27 @@ export default function App() {
   }
 
   async function updateTag(hash: string, tag: string, remove = false) {
-    const url = `${API}/api/images/${hash}/tags/${encodeURIComponent(tag)}`
-    const response = await fetch(url, { method: remove ? 'DELETE' : 'PUT' })
-    if (!response.ok) {
+    const ok = await updateTagForImages([hash], tag, remove)
+    if (!ok) {
       setNotice('Could not update this tag.')
       return
     }
     setTagDrafts(current => ({ ...current, [hash]: '' }))
     await refresh()
+  }
+
+  async function updateTagForImages(hashes: string[], tag: string, remove = false) {
+    if (!hashes.length) return true
+    const url = `${API}/api/tags/${encodeURIComponent(tag)}`
+    const response = await fetch(url, {
+      method: remove ? 'DELETE' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(hashes),
+    })
+    if (!response.ok) {
+      return false
+    }
+    return true
   }
 
   const visible = page.items.filter(item =>
@@ -119,7 +153,11 @@ export default function App() {
           type="file"
           multiple
           accept="image/*"
-          onChange={event => void importFiles(event.target.files)}
+          onChange={event => {
+            const files = Array.from(event.target.files ?? [])
+            if (files.length) setPendingFiles(files)
+            event.currentTarget.value = ''
+          }}
         />
         <button className="button button-primary" onClick={() => picker.current?.click()} disabled={importing}>
           {importing ? 'Importing…' : 'Import folder'}
@@ -130,6 +168,15 @@ export default function App() {
     {apiAvailable === false && <div className="health-alert" role="alert">
       API or database unavailable. Check that the backend and PostgreSQL are running.
     </div>}
+
+    {pendingFiles && <ImportPopup
+      files={pendingFiles}
+      tags={allTags}
+      importing={importing}
+      onCheckDuplicates={checkDuplicates}
+      onCancel={() => setPendingFiles(null)}
+      onImport={importFiles}
+    />}
 
     <section className="library-heading">
       <h1>Images</h1>

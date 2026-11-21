@@ -7,6 +7,7 @@ namespace ImageSorter.Infrastructure.Persistence;
 public sealed class EfImageCatalog(ImageDbContext db) : IImageCatalog
 {
     public Task<bool> ExistsAsync(string hash, CancellationToken ct) => db.Images.AnyAsync(image => image.Hash == hash, ct);
+    public Task<bool> OriginalNameExistsAsync(string originalName, CancellationToken ct) => db.Images.AnyAsync(image => image.OriginalName == originalName, ct);
     public async Task AddAsync(ImageRecord image, CancellationToken ct) { db.Images.Add(image); await db.SaveChangesAsync(ct); }
     public async Task<IReadOnlyList<ImageRecord>> ListAsync(string? tag, int skip, int take, CancellationToken ct)
     {
@@ -38,5 +39,42 @@ public sealed class EfImageCatalog(ImageDbContext db) : IImageCatalog
             var unusedTag = await db.Tags.FindAsync([tag], ct);
             if (unusedTag is not null) { db.Tags.Remove(unusedTag); await db.SaveChangesAsync(ct); }
         }
+    }
+
+    public async Task ApplyImportTagsAsync(IReadOnlyList<string> imageHashes, IReadOnlyList<string> tags, string newTag, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var previousNewLinks = await db.ImageTags.Where(link => link.TagName == newTag).ToListAsync(ct);
+        db.ImageTags.RemoveRange(previousNewLinks);
+
+        var hashes = imageHashes.Distinct().ToArray();
+        var tagNames = tags.Append(newTag).Distinct().ToArray();
+        if (hashes.Length > 0)
+        {
+            var existingTagNames = await db.Tags.Where(tag => tagNames.Contains(tag.Name)).Select(tag => tag.Name).ToArrayAsync(ct);
+            var existingTagSet = existingTagNames.ToHashSet(StringComparer.Ordinal);
+            db.Tags.AddRange(tagNames.Where(tag => !existingTagSet.Contains(tag)).Select(tag => new Tag(tag)));
+
+            var existingLinks = await db.ImageTags
+                .Where(link => hashes.Contains(link.ImageHash) && tagNames.Contains(link.TagName))
+                .Select(link => new { link.ImageHash, link.TagName })
+                .ToListAsync(ct);
+            var existingLinkSet = existingLinks.Select(link => (link.ImageHash, link.TagName)).ToHashSet();
+            db.ImageTags.AddRange(hashes.SelectMany(hash => tagNames
+                .Where(tag => !existingLinkSet.Contains((hash, tag)))
+                .Select(tag => new ImageTag(hash, tag))));
+        }
+
+        await db.SaveChangesAsync(ct);
+        if (!await db.ImageTags.AnyAsync(link => link.TagName == newTag, ct))
+        {
+            var unusedNewTag = await db.Tags.FindAsync([newTag], ct);
+            if (unusedNewTag is not null)
+            {
+                db.Tags.Remove(unusedNewTag);
+                await db.SaveChangesAsync(ct);
+            }
+        }
+        await transaction.CommitAsync(ct);
     }
 }

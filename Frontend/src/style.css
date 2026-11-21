@@ -92,6 +92,54 @@ button:disabled { cursor: wait; opacity: .6; }
   font-size: 13px;
 }
 
+.popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 35%);
+}
+
+.import-popup {
+  width: min(100%, 520px);
+  max-height: min(760px, 90vh);
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 16%);
+}
+
+.popup-header, .popup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.popup-header { margin-bottom: 14px; }
+.popup-header h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.popup-header p, .popup-hint { margin: 5px 0 0; color: #666; font-size: 13px; }
+.popup-hint + .popup-hint { margin-top: 8px; }
+
+.popup-tag-section { margin-top: 22px; }
+.popup-tag-section h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.popup-tag-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 180px; overflow-y: auto; }
+.popup-tag-option { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; cursor: pointer; }
+.popup-tag-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popup-tag-option input { accent-color: #222; }
+
+.popup-create-tag { display: grid; gap: 8px; margin-top: 20px; }
+.popup-create-tag > label { font-size: 13px; font-weight: 600; }
+.popup-create-tag > div { display: flex; gap: 8px; }
+.popup-create-tag input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid #dedede; border-radius: 4px; font-size: 13px; }
+.popup-create-tag input:focus { border-color: #777; outline: 2px solid #dedede; outline-offset: 1px; }
+.tag-error { margin: 0; color: #8a2525; font-size: 12px; }
+.popup-actions { justify-content: flex-end; margin-top: 24px; }
+
 .library-heading {
   display: flex;
   align-items: baseline;
@@ -201,6 +249,7 @@ button:disabled { cursor: wait; opacity: .6; }
   .top-actions { gap: 7px; }
   .search { width: min(42vw, 190px); }
   .image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; }
+  .import-popup { padding: 18px; }
 }
 
 @media (max-width: 380px) {

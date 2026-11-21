@@ -33,6 +33,32 @@ public sealed class LocalImageStorage : IImageStorage
         }
     }
 
+    public async Task<(string Hash, string Path)> CopyAsync(string hash, CancellationToken ct)
+    {
+        var source = await FindPathAsync(hash, ct) ?? throw new FileNotFoundException("The source image was not found.");
+        var extension = Path.GetExtension(source);
+        string duplicateHash;
+        string destination;
+        do
+        {
+            duplicateHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            destination = Path.Combine(RootPath, duplicateHash + extension);
+        } while (File.Exists(destination));
+
+        try
+        {
+            await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
+            await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
+            await input.CopyToAsync(output, ct);
+            return (duplicateHash, destination);
+        }
+        catch
+        {
+            if (File.Exists(destination)) File.Delete(destination);
+            throw;
+        }
+    }
+
     public Task<string?> FindPathAsync(string hash, CancellationToken ct)
     {
         if (!IsHash(hash)) return Task.FromResult<string?>(null);
