@@ -15,6 +15,7 @@ public interface IContentCatalog
     Task<IReadOnlyList<string>> GetTagsAsync(CancellationToken cancellationToken);
     Task SetTagAsync(string hash, string tag, CancellationToken cancellationToken);
     Task RemoveTagAsync(string hash, string tag, CancellationToken cancellationToken);
+    Task<bool> SetDescriptionAsync(string hash, string description, CancellationToken cancellationToken);
     Task ApplyImportTagsAsync(IReadOnlyList<string> contentHashes, IReadOnlyList<string> tags, string newTag, CancellationToken cancellationToken);
 }
 

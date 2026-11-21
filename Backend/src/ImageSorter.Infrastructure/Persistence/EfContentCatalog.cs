@@ -40,6 +40,7 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog
         db.ContentTags.AddRange(source.ContentTags
             .Where(link => targetTags.Add(link.TagName))
             .Select(link => new ContentTag(targetHash, link.TagName)));
+        target.MergeDescription(source.Description);
         db.Contents.Remove(source);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -76,6 +77,15 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog
             var unusedTag = await db.Tags.FindAsync([tag], ct);
             if (unusedTag is not null) { db.Tags.Remove(unusedTag); await db.SaveChangesAsync(ct); }
         }
+    }
+
+    public async Task<bool> SetDescriptionAsync(string hash, string description, CancellationToken ct)
+    {
+        var content = await db.Contents.SingleOrDefaultAsync(item => item.Hash == hash, ct);
+        if (content is null) return false;
+        content.UpdateDescription(description);
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     public async Task ApplyImportTagsAsync(IReadOnlyList<string> contentHashes, IReadOnlyList<string> tags, string newTag, CancellationToken ct)

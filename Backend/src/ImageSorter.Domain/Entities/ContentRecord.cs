@@ -17,11 +17,18 @@ public sealed class ContentRecord
     public string Hash { get; private set; } = string.Empty;
     public string ContentType { get; private set; } = "application/octet-stream";
     public string OriginalName { get; private set; } = string.Empty;
+    public string Description { get; private set; } = string.Empty;
     public DateTimeOffset AddedAt { get; private set; }
     public bool Dirty { get; private set; } = true;
     public ICollection<ContentTag> ContentTags => _contentTags;
 
     public void MarkClean() => Dirty = false;
+    public void UpdateDescription(string description) => Description = description;
+    public void MergeDescription(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description)) return;
+        Description = string.IsNullOrWhiteSpace(Description) ? description : $"{Description}\n{description}";
+    }
 }
 
 public sealed class Tag

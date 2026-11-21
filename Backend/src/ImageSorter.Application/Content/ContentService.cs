@@ -3,7 +3,7 @@ using ImageSorter.Domain.Entities;
 
 namespace ImageSorter.Application.Content;
 
-public sealed record ContentDto(string Hash, string OriginalName, DateTimeOffset AddedAt, IReadOnlyList<string> Tags, string MediaType);
+public sealed record ContentDto(string Hash, string OriginalName, DateTimeOffset AddedAt, IReadOnlyList<string> Tags, string MediaType, string Description);
 public sealed record ContentPage(IReadOnlyList<ContentDto> Items, int Total, int Skip, int Take);
 public sealed record ImportResult(int Imported, IReadOnlyList<string> Errors, IReadOnlyList<string> Hashes);
 
@@ -67,6 +67,13 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
 
     public Task<string?> FindContentPathAsync(string hash, CancellationToken ct) => storage.FindPathAsync(hash, ct);
 
+    public async Task SetDescriptionAsync(string hash, string description, CancellationToken ct)
+    {
+        if (description.Length > 5000) throw new ArgumentException("Descriptions cannot exceed 5000 characters.");
+        if (!await catalog.SetDescriptionAsync(hash, description, ct))
+            throw new KeyNotFoundException($"Content '{hash}' was not found.");
+    }
+
     public async Task<byte[]?> GetThumbnailAsync(string hash, CancellationToken ct)
     {
         var contentPath = await storage.FindPathAsync(hash, ct);
@@ -104,7 +111,7 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
         }
     }
 
-    private static ContentDto ToDto(ContentRecord content) => new(content.Hash, content.OriginalName, content.AddedAt, content.ContentTags.Select(t => t.TagName).Order().ToArray(), content.ContentType);
+    private static ContentDto ToDto(ContentRecord content) => new(content.Hash, content.OriginalName, content.AddedAt, content.ContentTags.Select(t => t.TagName).Order().ToArray(), content.ContentType, content.Description);
     private static string NormalizeTag(string value) => value.Trim().ToLowerInvariant();
     private static string? NormalizeTagOrNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : NormalizeTag(value);
     private static string ContentTypeFor(string extension) => extension.ToLowerInvariant() switch

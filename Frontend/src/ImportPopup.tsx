@@ -54,9 +54,6 @@ export default function ImportPopup({ files, tags, importing, onCancel, onImport
         <button className="text-button" type="button" onClick={onCancel} disabled={importing}>Close</button>
       </header>
 
-      {files.length > importableFiles.length && <p className="popup-hint">
-        {files.length - importableFiles.length} unsupported file{files.length - importableFiles.length === 1 ? ' will' : 's will'} be skipped.
-      </p>}
       <section className="popup-tag-section">
         <h3>Tags for all imported files</h3>
         {availableTags.length > 0 ? <div className="popup-tag-list">

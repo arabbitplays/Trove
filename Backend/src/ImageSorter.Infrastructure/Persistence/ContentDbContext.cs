@@ -18,6 +18,7 @@ public sealed class ContentDbContext(DbContextOptions<ContentDbContext> options)
             entity.Property(content => content.Hash).HasMaxLength(64);
             entity.Property(content => content.ContentType).HasMaxLength(100).IsRequired();
             entity.Property(content => content.OriginalName).HasMaxLength(255).IsRequired();
+            entity.Property(content => content.Description).HasColumnType("text").IsRequired();
             entity.Property(content => content.AddedAt).HasColumnType("timestamp with time zone").IsRequired();
             entity.Property(content => content.Dirty).HasColumnName("dirty").HasDefaultValue(true).IsRequired();
             entity.HasIndex(content => content.AddedAt);

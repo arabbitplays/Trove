@@ -7,6 +7,8 @@ namespace ImageSorter.Api.Controllers;
 [Route("api")]
 public sealed class ContentController(ContentService service) : ControllerBase
 {
+    public sealed record DescriptionRequest(string Description);
+
     [HttpGet("contents")]
     public async Task<IActionResult> List([FromQuery] string? tag, [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct) =>
         Ok(await service.ListAsync(tag, skip ?? 0, take ?? 50, ct));
@@ -43,7 +45,25 @@ public sealed class ContentController(ContentService service) : ControllerBase
             ".3gp" => "video/3gpp",
             _ => "application/octet-stream"
         };
-        return PhysicalFile(path, contentType);
+        return PhysicalFile(path, contentType, enableRangeProcessing: true);
+    }
+
+    [HttpPut("contents/{hash}/description")]
+    public async Task<IActionResult> SetDescription(string hash, [FromBody] DescriptionRequest request, CancellationToken ct)
+    {
+        try
+        {
+            await service.SetDescriptionAsync(hash, request.Description, ct);
+            return NoContent();
+        }
+        catch (ArgumentException error)
+        {
+            return BadRequest(new { error = error.Message });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
     }
 
     [HttpPost("import")]

@@ -1,15 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Menu, Play } from 'lucide-react'
 import ImportPopup from './ImportPopup'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
-type ContentItem = { hash: string; originalName: string; addedAt: string; tags: string[] }
+type ContentItem = { hash: string; originalName: string; addedAt: string; tags: string[]; mediaType: string; description: string }
 type Page = { items: ContentItem[]; total: number; skip: number; take: number }
 
 export default function App() {
   const [page, setPage] = useState<Page>({ items: [], total: 0, skip: 0, take: 48 })
   const [allTags, setAllTags] = useState<string[]>([])
   const [activeTag, setActiveTag] = useState('')
-  const [query, setQuery] = useState('')
+  const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid')
+  const [selectedHash, setSelectedHash] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarMounted, setSidebarMounted] = useState(false)
+  const [descriptionDrafts, setDescriptionDrafts] = useState<Record<string, string>>({})
+  const [tagShortcuts, setTagShortcuts] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('content-tag-shortcuts') ?? '{}') as Record<string, string>
+    } catch {
+      return {}
+    }
+  })
   const [loading, setLoading] = useState(true)
   const [apiAvailable, setApiAvailable] = useState<boolean | null>(null)
   const [importing, setImporting] = useState(false)
@@ -17,6 +29,12 @@ export default function App() {
   const [notice, setNotice] = useState('')
   const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({})
   const picker = useRef<HTMLInputElement>(null)
+  const navigationPending = useRef(false)
+  const pageRef = useRef(page)
+  const activeTagRef = useRef(activeTag)
+  const nextPageRequest = useRef<Promise<ContentItem[]> | null>(null)
+  const gridEndRef = useRef<HTMLDivElement>(null)
+  activeTagRef.current = activeTag
 
   const refresh = useCallback(async (tag = activeTag) => {
     setLoading(true)
@@ -28,7 +46,9 @@ export default function App() {
         fetch(`${API}/api/tags`),
       ])
       if (!contentsResponse.ok || !tagsResponse.ok) throw new Error('Request failed')
-      setPage(await contentsResponse.json() as Page)
+      const nextPage = await contentsResponse.json() as Page
+      pageRef.current = nextPage
+      setPage(nextPage)
       setAllTags(await tagsResponse.json() as string[])
     } catch {
       setApiAvailable(false)
@@ -38,6 +58,10 @@ export default function App() {
   }, [activeTag])
 
   useEffect(() => { void refresh() }, [refresh])
+
+  useEffect(() => {
+    localStorage.setItem('content-tag-shortcuts', JSON.stringify(tagShortcuts))
+  }, [tagShortcuts])
 
   useEffect(() => {
     let active = true
@@ -95,13 +119,47 @@ export default function App() {
   }
 
   async function updateTag(hash: string, tag: string, remove = false) {
+    const previousPage = pageRef.current
+    const previousTags = previousPage.items.find(item => item.hash === hash)?.tags
+    const tagWasPresent = previousTags?.includes(tag) ?? false
+    if (previousTags) {
+      const optimisticPage = {
+        ...previousPage,
+        items: previousPage.items.map(item => item.hash !== hash ? item : {
+          ...item,
+          tags: remove ? item.tags.filter(itemTag => itemTag !== tag) : [...new Set([...item.tags, tag])].sort(),
+        }),
+      }
+      pageRef.current = optimisticPage
+      setPage(optimisticPage)
+    }
+
     const ok = await updateTagForContent([hash], tag, remove)
     if (!ok) {
+      if (previousTags) {
+        const currentPage = pageRef.current
+        const rollbackPage = {
+          ...currentPage,
+          items: currentPage.items.map(item => item.hash !== hash ? item : {
+            ...item,
+            tags: remove
+              ? tagWasPresent ? [...new Set([...item.tags, tag])].sort() : item.tags
+              : tagWasPresent ? item.tags : item.tags.filter(itemTag => itemTag !== tag),
+          }),
+        }
+        pageRef.current = rollbackPage
+        setPage(rollbackPage)
+      }
       setNotice('Could not update this tag.')
       return
     }
     setTagDrafts(current => ({ ...current, [hash]: '' }))
-    await refresh()
+    if (remove && activeTag === tag) {
+      await refresh()
+      return
+    }
+    const tagsResponse = await fetch(`${API}/api/tags`)
+    if (tagsResponse.ok) setAllTags(await tagsResponse.json() as string[])
   }
 
   async function updateTagForContent(hashes: string[], tag: string, remove = false) {
@@ -118,22 +176,143 @@ export default function App() {
     return true
   }
 
-  const visible = page.items.filter(item =>
-    !query || `${item.originalName} ${item.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()),
-  )
+  async function saveDescription(hash: string, description: string) {
+    const current = pageRef.current.items.find(item => item.hash === hash)
+    if (!current) return
+    if (description === current.description) return
+    const response = await fetch(`${API}/api/contents/${hash}/description`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description }),
+    })
+    if (!response.ok) {
+      setNotice('Could not save the description.')
+      return
+    }
+    const updatedPage = {
+      ...pageRef.current,
+      items: pageRef.current.items.map(item => item.hash === hash ? { ...item, description } : item),
+    }
+    pageRef.current = updatedPage
+    setPage(updatedPage)
+    setDescriptionDrafts(currentDrafts => {
+      if (currentDrafts[hash] !== description) return currentDrafts
+      const next = { ...currentDrafts }
+      delete next[hash]
+      return next
+    })
+  }
+
+  const visible = page.items
+
+  const loadNextBatch = useCallback((): Promise<ContentItem[]> => {
+    if (nextPageRequest.current) return nextPageRequest.current
+    const current = pageRef.current
+    const skip = current.items.length
+    const tag = activeTagRef.current
+    if (skip >= current.total) return Promise.resolve([])
+
+    const request = fetchContentPage(skip, tag).then(batch => {
+      const latest = pageRef.current
+      if (activeTagRef.current !== tag || latest.items.length !== skip || !batch.items.length) return []
+      const expanded = { ...batch, items: [...latest.items, ...batch.items] }
+      pageRef.current = expanded
+      setPage(expanded)
+      return batch.items
+    }).catch(() => {
+      return []
+    }).finally(() => {
+      nextPageRequest.current = null
+    })
+    nextPageRequest.current = request
+    return request
+  }, [])
+
+  async function moveSelection(direction: -1 | 1) {
+    const currentPage = pageRef.current
+    const visible = currentPage.items
+    const currentIndex = visible.findIndex(item => item.hash === selectedHash)
+    const effectiveIndex = currentIndex < 0 ? 0 : currentIndex
+    const next = visible[effectiveIndex + direction]
+    if (next) {
+      setSelectedHash(next.hash)
+      return
+    }
+    if (direction < 0 || currentPage.items.length >= currentPage.total) return
+    if (navigationPending.current) return
+
+    navigationPending.current = true
+    try {
+      while (pageRef.current.items.length < pageRef.current.total) {
+        const batch = await loadNextBatch()
+        if (!batch.length) return
+        setSelectedHash(batch[0].hash)
+        return
+      }
+    } finally {
+      navigationPending.current = false
+    }
+  }
+
+  useEffect(() => {
+    if (loading || page.items.length >= page.total) return
+    if (visible.length === 0) {
+      void loadNextBatch()
+      return
+    }
+    if (viewMode !== 'single') return
+    const selectedIndex = page.items.findIndex(item => item.hash === selectedHash)
+    if (selectedIndex >= 0 && page.items.length - selectedIndex <= 10)
+      void loadNextBatch()
+  }, [viewMode, loading, page, selectedHash, visible.length, loadNextBatch])
+
+  useEffect(() => {
+    if (viewMode !== 'grid' || loading || !gridEndRef.current || page.items.length >= page.total) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) void loadNextBatch()
+    }, { rootMargin: '600px' })
+    observer.observe(gridEndRef.current)
+    return () => observer.disconnect()
+  }, [viewMode, loading, page.items.length, page.total, loadNextBatch])
+
+  useEffect(() => {
+    if (viewMode !== 'single') return
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target
+      if (target instanceof HTMLTextAreaElement && target.id === 'content-description') return
+      const legacyNumber = event.keyCode >= 49 && event.keyCode <= 57
+        ? String(event.keyCode - 48)
+        : event.keyCode >= 97 && event.keyCode <= 105
+          ? String(event.keyCode - 96)
+          : undefined
+      const number = /^[1-9]$/.test(event.key)
+        ? event.key
+        : /^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1] ?? legacyNumber
+      if (number) {
+        const tag = tagShortcuts[number]
+        const current = pageRef.current.items.find(item => item.hash === selectedHash) ?? pageRef.current.items[0]
+        if (tag && current) {
+          event.preventDefault()
+          event.stopPropagation()
+          void updateTag(current.hash, tag)
+        }
+        return
+      }
+      if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      event.preventDefault()
+      void moveSelection(event.key === 'ArrowLeft' ? -1 : 1)
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [viewMode, page, selectedHash, activeTag, tagShortcuts])
+
+  const selectedContent = visible.find(item => item.hash === selectedHash) ?? visible[0]
 
   return <main className="app-shell">
     <header className="topbar">
       <a className="brand" href="#">Content Manager</a>
       <div className="top-actions">
-        <input
-          className="search"
-          type="search"
-          aria-label="Search media"
-          placeholder="Search media"
-          value={query}
-          onChange={event => setQuery(event.target.value)}
-        />
         <input
           ref={element => {
             picker.current = element
@@ -149,11 +328,35 @@ export default function App() {
             event.currentTarget.value = ''
           }}
         />
-        <button className="button button-primary" onClick={() => picker.current?.click()} disabled={importing}>
-          {importing ? 'Importing…' : 'Import folder'}
-        </button>
+        {!sidebarMounted && <button className="button menu-trigger" type="button" onClick={() => {
+          setSidebarMounted(true)
+          requestAnimationFrame(() => setSidebarOpen(true))
+        }} aria-label="Open menu" aria-expanded={false}>
+          <Menu size={20} aria-hidden="true" />
+        </button>}
       </div>
     </header>
+
+    {sidebarMounted && <div className={`sidebar-backdrop ${sidebarOpen ? 'sidebar-open' : ''}`} onMouseDown={event => {
+      if (event.target === event.currentTarget) setSidebarOpen(false)
+    }}>
+      <aside className="content-sidebar" aria-label="Main menu" onTransitionEnd={event => {
+        if (event.target === event.currentTarget && !sidebarOpen) setSidebarMounted(false)
+      }}>
+        <header className="sidebar-header">
+          <h2>Menu</h2>
+          <button className="button menu-trigger" type="button" onClick={() => setSidebarOpen(false)} aria-label="Close menu" aria-expanded={sidebarOpen}>
+            <Menu size={20} aria-hidden="true" />
+          </button>
+        </header>
+        <button className="button button-primary sidebar-import" type="button" onClick={() => {
+          setSidebarOpen(false)
+          picker.current?.click()
+        }} disabled={importing}>
+          {importing ? 'Importing…' : 'Import folder'}
+        </button>
+      </aside>
+    </div>}
 
     {apiAvailable === false && <div className="health-alert" role="alert">
       API or database unavailable. Check that the backend and PostgreSQL are running.
@@ -170,6 +373,13 @@ export default function App() {
     <section className="library-heading">
       <h1>Library</h1>
       <span>{page.total.toLocaleString()} total</span>
+      <div className="view-toggle" role="group" aria-label="View mode">
+        <button className={`button ${viewMode === 'grid' ? 'button-primary' : ''}`} type="button" onClick={() => setViewMode('grid')} aria-pressed={viewMode === 'grid'}>Grid</button>
+        <button className={`button ${viewMode === 'single' ? 'button-primary' : ''}`} type="button" onClick={() => {
+          setSelectedHash(visible[0]?.hash ?? '')
+          setViewMode('single')
+        }} aria-pressed={viewMode === 'single'}>Single</button>
+      </div>
     </section>
 
     <nav className="filters" aria-label="Filter by tag">
@@ -187,13 +397,20 @@ export default function App() {
     </div>}
 
     {loading ? <p className="state">Loading library…</p> : visible.length === 0 ? <section className="state empty-state">
-        <h2>{query || activeTag ? 'No media found' : 'No media yet'}</h2>
-        <p>{query || activeTag ? 'Try a different search or filter.' : 'Import a folder to add images and videos to your library.'}</p>
-    </section> : <section className="content-grid" aria-label="Media library">
+        <h2>{activeTag ? 'No media found' : 'No media yet'}</h2>
+        <p>{activeTag ? 'Try a different tag filter.' : 'Import a folder to add images and videos to your library.'}</p>
+    </section> : viewMode === 'grid' ? <section className="content-grid" aria-label="Media library">
       {visible.map(item => <article className="content-card" key={item.hash}>
-        <img className="content-preview" src={`${API}/api/contents/${item.hash}/thumbnail`} alt={item.originalName} loading="lazy" />
+        <button className="content-preview-wrap" type="button" onClick={() => {
+          setSelectedHash(item.hash)
+          setViewMode('single')
+        }} aria-label={`Open ${item.originalName}`}>
+          <img className="content-preview" src={`${API}/api/contents/${item.hash}/thumbnail`} alt={item.originalName} loading="lazy" />
+          {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">
+            <Play size={16} fill="currentColor" aria-hidden="true" />
+          </span>}
+        </button>
         <div className="content-details">
-          <div className="filename" title={item.originalName}>{item.originalName}</div>
           <div className="card-tags">
             {item.tags.map(tag => <button
               key={tag}
@@ -217,19 +434,72 @@ export default function App() {
           </div>
         </div>
       </article>)}
-    </section>}
+      <div ref={gridEndRef} className="content-grid-end" aria-hidden="true" />
+    </section> : selectedContent ? <section className="single-content" aria-label="Single content view">
+      <header className="single-content-heading">
+        <div className="single-content-title">
+          <span>{page.items.findIndex(item => item.hash === selectedContent.hash) + 1} of {page.total.toLocaleString()}</span>
+        </div>
+      </header>
+      <div className="single-content-frame">
+        {selectedContent.mediaType.startsWith('video/')
+          ? <video className="full-content" src={`${API}/api/contents/${selectedContent.hash}/content`} controls preload="metadata" />
+          : <img className="full-content" src={`${API}/api/contents/${selectedContent.hash}/content`} alt={selectedContent.originalName} />}
+      </div>
+      <section className="single-content-tools" aria-label="Content description and shortcuts">
+        <div className="description-editor">
+          <label htmlFor="content-description">Description</label>
+          <textarea
+            id="content-description"
+            rows={4}
+            maxLength={5000}
+            value={descriptionDrafts[selectedContent.hash] ?? selectedContent.description}
+            onChange={event => setDescriptionDrafts(state => ({ ...state, [selectedContent.hash]: event.target.value }))}
+            onBlur={event => void saveDescription(selectedContent.hash, event.currentTarget.value)}
+          />
+        </div>
+        <section className="tag-shortcut-section" aria-label="Number key tag shortcuts">
+          <h2>Quick tag shortcuts</h2>
+          <div className="tag-shortcuts">
+            {Array.from({ length: 9 }, (_, index) => String(index + 1)).map(number => <label className="tag-shortcut" key={number}>
+              <kbd>{number}</kbd>
+              <select
+                aria-label={`Tag for number ${number}`}
+                value={tagShortcuts[number] ?? ''}
+                onChange={event => {
+                  setTagShortcuts(current => ({ ...current, [number]: event.target.value }))
+                  event.currentTarget.blur()
+                }}
+              >
+                <option value="">No tag</option>
+                {allTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+              </select>
+            </label>)}
+          </div>
+          <p>Press a number key to add its tag to this content.</p>
+        </section>
+      </section>
+      <div className="single-content-tags">
+        {selectedContent.tags.map(tag => <button key={tag} className="tag" onClick={() => void updateTag(selectedContent.hash, tag, true)} title={`Remove ${tag}`}>
+          {tag}<span aria-hidden="true"> ×</span>
+        </button>)}
+        <form onSubmit={event => {
+          event.preventDefault()
+          const tag = tagDrafts[selectedContent.hash]?.trim()
+          if (tag) void updateTag(selectedContent.hash, tag)
+        }}>
+          <input className="tag-input" aria-label={`Add tag to ${selectedContent.originalName}`} placeholder="Add tag" value={tagDrafts[selectedContent.hash] ?? ''} onChange={event => setTagDrafts(state => ({ ...state, [selectedContent.hash]: event.target.value }))} />
+        </form>
+      </div>
+    </section> : <p className="state">No content in this view.</p>}
 
-    {!loading && page.total > page.items.length && <button className="button load-more" onClick={() => void loadMore(page, activeTag, setPage)}>
-      Load more
-    </button>}
   </main>
 }
 
-async function loadMore(page: Page, tag: string, setPage: (next: Page | ((current: Page) => Page)) => void) {
-  const params = new URLSearchParams({ skip: String(page.items.length), take: '100' })
+async function fetchContentPage(skip: number, tag: string): Promise<Page> {
+  const params = new URLSearchParams({ skip: String(skip), take: '100' })
   if (tag) params.set('tag', tag)
   const response = await fetch(`${API}/api/contents?${params}`)
-  if (!response.ok) return
-  const next = await response.json() as Page
-  setPage(current => ({ ...next, items: [...current.items, ...next.items] }))
+  if (!response.ok) return { items: [], total: 0, skip, take: 100 }
+  return await response.json() as Page
 }

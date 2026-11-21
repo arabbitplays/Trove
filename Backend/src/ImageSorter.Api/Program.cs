@@ -95,6 +95,7 @@ try
                 END IF;
             END $$;
             ALTER TABLE contents ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT TRUE;
+            ALTER TABLE contents ADD COLUMN IF NOT EXISTS "Description" text NOT NULL DEFAULT '';
             """);
     }
 
