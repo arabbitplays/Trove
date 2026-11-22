@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import DateInput from './DateInput'
 
 export type EditableContent = {
   id: string
@@ -107,7 +108,7 @@ export default function ContentMetadataEditor({
     </section>
     <div className="content-capture-date">
       <label htmlFor="content-capture-date">Capture date</label>
-      <div className="content-capture-date-controls"><input id="content-capture-date" type="date" value={takenAtDraft} onChange={event => { setTakenAtDraft(event.target.value); setDateError(''); void onSaveMetadata(content.id, description, event.target.value || null) }} /><button type="button" className="button" aria-label="Clear capture date" title="Clear capture date" disabled={!takenAtDraft} onClick={() => { setTakenAtDraft(''); setDateError(''); void onSaveMetadata(content.id, description, null) }}>×</button></div>
+      <div className="content-capture-date-controls"><DateInput id="content-capture-date" value={takenAtDraft} onChange={value => { setTakenAtDraft(value); setDateError(''); void onSaveMetadata(content.id, description, value || null) }} /><button type="button" className="button" aria-label="Clear capture date" title="Clear capture date" disabled={!takenAtDraft} onClick={() => { setTakenAtDraft(''); setDateError(''); void onSaveMetadata(content.id, description, null) }}>×</button></div>
       {dateError && <span className="content-date-error" role="alert">{dateError}</span>}
     </div>
     <div className="single-content-tags">

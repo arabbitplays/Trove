@@ -20,8 +20,8 @@ type Props<T extends SelectableContent> = {
   allSelected: boolean
   isSelected: (id: string) => boolean
   onToggleAll: () => void
-  onToggle: (id: string) => void
-  onOpen: (item: T) => void
+  onToggle: (id: string, shiftKey?: boolean) => void
+  onOpen: (item: T, shiftKey?: boolean) => void
   renderDetails: (item: T) => ReactNode
   endRef: RefObject<HTMLDivElement>
 }
@@ -49,7 +49,7 @@ export default function ImageSelection<T extends SelectableContent>({
     <div className="selection-toolbar">
       <label className="selection-all-control">
         <input ref={selectAllRef} type="checkbox" checked={allSelected} onChange={onToggleAll} disabled={total === 0} />
-        <span>Select all {total.toLocaleString()} matching items</span>
+        <span>Select all</span>
       </label>
       <span className="selection-count" aria-live="polite">{selectedCount.toLocaleString()} selected</span>
       {onActions && <button className="button selection-actions-trigger" type="button" aria-label="Actions for selected images" disabled={!selectedCount} onClick={event => {
@@ -60,14 +60,14 @@ export default function ImageSelection<T extends SelectableContent>({
     <section className="content-grid" aria-label="Select media">
       {items.map(item => <article className={`content-card ${isSelected(item.id) ? 'content-card-selected' : ''}`} key={item.id}>
         <div className="content-selection-preview" onContextMenu={event => { if (onContextMenu) { event.preventDefault(); onContextMenu(item.id, event.clientX, event.clientY) } }}>
-          <button className="content-preview-wrap" type="button" onClick={() => onOpen(item)} aria-label={`Open content ${item.id.slice(0, 8)}`}>
+          <button className="content-preview-wrap" type="button" onClick={event => onOpen(item, event.shiftKey)} aria-label={`Open content ${item.id.slice(0, 8)}`}>
             <img className="content-preview" src={`${import.meta.env.VITE_API_URL ?? 'http://localhost:5000'}/api/contents/${item.id}/thumbnail`} alt="Content" loading="lazy" />
             {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">
               <Play size={16} fill="currentColor" aria-hidden="true" />
             </span>}
           </button>
           <label className="content-selection-control">
-            <input type="checkbox" checked={isSelected(item.id)} onChange={() => onToggle(item.id)} aria-label={`Select content ${item.id.slice(0, 8)}`} />
+            <input type="checkbox" checked={isSelected(item.id)} onChange={event => onToggle(item.id, (event.nativeEvent as globalThis.MouseEvent).shiftKey)} aria-label={`Select content ${item.id.slice(0, 8)}`} />
           </label>
         </div>
         {renderDetails(item)}

@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent, type MouseEvent, type RefObject } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent, type RefObject } from 'react'
 import ImageSelection, { type SelectableContent } from './ImageSelection'
 import ContentMetadataEditor from './ContentMetadataEditor'
+import DateInput from './DateInput'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
 
@@ -22,15 +23,6 @@ function formatDate(value: string) {
   return `${day}.${month}.${year}`
 }
 
-function parseDate(value: string) {
-  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim())
-  if (!match) return null
-  const [, day, month, year] = match
-  const isoDate = `${year}-${month}-${day}`
-  const parsed = new Date(`${isoDate}T00:00:00Z`)
-  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === isoDate ? isoDate : null
-}
-
 type Props = {
   contents: ContentItem[]
   totalContents: number
@@ -42,7 +34,7 @@ type Props = {
   autoTagNames: string[]
   endRef: RefObject<HTMLDivElement>
   loadNextBatch: () => Promise<ContentItem[]>
-  onTagsChanged: () => Promise<void>
+  onTagsChanged: (tag: string, remove: boolean) => Promise<void>
   tagShortcuts: Record<string, string>
   onShortcutChange: (number: string, tag: string) => void
 }
@@ -57,6 +49,9 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
   const [titleImageId, setTitleImageId] = useState('')
   const [periodContents, setPeriodContents] = useState<ContentItem[]>([])
   const [selectedPeriodImageIds, setSelectedPeriodImageIds] = useState<string[]>([])
+  const selectAllPeriodImagesRef = useRef<HTMLInputElement>(null)
+  const periodImageSelectionAnchor = useRef<string | null>(null)
+  const addImageSelectionAnchor = useRef<string | null>(null)
   const [imageActionsMenu, setImageActionsMenu] = useState<{ x: number; y: number } | null>(null)
   const [imageView, setImageView] = useState<'grid' | 'single'>('grid')
   const [currentContentId, setCurrentContentId] = useState('')
@@ -93,6 +88,13 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     : selection.ids.length
   const allSelected = selection.mode === 'all' && selection.excludedIds.length === 0
 
+  const allPeriodImagesSelected = periodContents.length > 0 && periodContents.every(item => selectedPeriodImageIds.includes(item.id))
+  useEffect(() => {
+    if (selectAllPeriodImagesRef.current) {
+      selectAllPeriodImagesRef.current.indeterminate = selectedPeriodImageIds.length > 0 && !allPeriodImagesSelected
+    }
+  }, [allPeriodImagesSelected, selectedPeriodImageIds.length])
+
   useEffect(() => {
     if ((!editing && !isNew) || !addPopupOpen || contents.length >= totalContents || !endRef.current) return
     const observer = new IntersectionObserver(entries => {
@@ -108,8 +110,8 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     setPeriodContents([])
     setIsNew(true)
     setName('')
-    setStartDate(formatDate(today))
-    setEndDate(formatDate(today))
+    setStartDate(today)
+    setEndDate(today)
     setTitleImageId('')
     setError('')
   }
@@ -117,9 +119,11 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
   function beginEdit(period: PeriodRecord) {
     setEditing(period)
     setIsNew(false)
+    setSelectedPeriodImageIds([])
+    periodImageSelectionAnchor.current = null
     setName(period.name)
-    setStartDate(formatDate(period.startDate))
-    setEndDate(formatDate(period.endDate))
+    setStartDate(period.startDate.slice(0, 10))
+    setEndDate(period.endDate.slice(0, 10))
     setTitleImageId(period.titleImageId ?? '')
     setSelection({ mode: 'some', ids: [] })
     setError('')
@@ -163,13 +167,11 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
 
   async function savePeriod(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const startDateIso = parseDate(startDate)
-    const endDateIso = parseDate(endDate)
-    if (!startDateIso || !endDateIso) {
-      setError('Enter dates in DD.MM.YYYY format, for example 08.04.2025.')
+    if (!startDate || !endDate) {
+      setError('Choose both a start date and an end date.')
       return
     }
-    if (endDateIso < startDateIso) {
+    if (endDate < startDate) {
       setError('The end date must be on or after the start date.')
       return
     }
@@ -180,7 +182,7 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
         const response = await fetch(`${API}/api/periods`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, startDate: startDateIso, endDate: endDateIso }),
+          body: JSON.stringify({ name, startDate, endDate }),
         })
         if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'Could not create period.')
         const created = await response.json() as PeriodRecord
@@ -190,11 +192,11 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
         const response = await fetch(`${API}/api/periods/${editing.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, startDate: startDateIso, endDate: endDateIso, titleImageId: titleImageId || null }),
+          body: JSON.stringify({ name, startDate, endDate, titleImageId: titleImageId || null }),
         })
         if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'Could not save period.')
         await loadPeriods()
-        setEditing(current => current ? { ...current, name, startDate: startDateIso, endDate: endDateIso, titleImageId: titleImageId || null } : current)
+        setEditing(current => current ? { ...current, name, startDate, endDate, titleImageId: titleImageId || null } : current)
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save period.')
@@ -203,7 +205,17 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     }
   }
 
-  function toggleContent(id: string) {
+  function toggleContent(id: string, shiftKey = false) {
+    if (shiftKey && addImageSelectionAnchor.current) {
+      const anchorIndex = contents.findIndex(item => item.id === addImageSelectionAnchor.current)
+      const clickedIndex = contents.findIndex(item => item.id === id)
+      if (anchorIndex >= 0 && clickedIndex >= 0) {
+        const [start, end] = [anchorIndex, clickedIndex].sort((a, b) => a - b)
+        setSelection({ mode: 'some', ids: contents.slice(start, end + 1).map(item => item.id) })
+        return
+      }
+    }
+    addImageSelectionAnchor.current = id
     setSelection(current => {
       if (current.mode === 'all') {
         const excluded = new Set(current.excludedIds)
@@ -216,6 +228,20 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
       else ids.add(id)
       return { mode: 'some', ids: [...ids] }
     })
+  }
+
+  function togglePeriodImageSelection(id: string, shiftKey: boolean) {
+    if (shiftKey && periodImageSelectionAnchor.current) {
+      const anchorIndex = periodContents.findIndex(item => item.id === periodImageSelectionAnchor.current)
+      const clickedIndex = periodContents.findIndex(item => item.id === id)
+      if (anchorIndex >= 0 && clickedIndex >= 0) {
+        const [start, end] = [anchorIndex, clickedIndex].sort((a, b) => a - b)
+        setSelectedPeriodImageIds(periodContents.slice(start, end + 1).map(item => item.id))
+        return
+      }
+    }
+    periodImageSelectionAnchor.current = id
+    setSelectedPeriodImageIds(current => current.includes(id) ? current.filter(itemId => itemId !== id) : [...current, id])
   }
 
   function toggleAll() {
@@ -263,6 +289,7 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
       const contentIds = editing.contentIds.filter(item => item !== id)
       setEditing({ ...editing, contentIds, titleImageId: editing.titleImageId === id ? null : editing.titleImageId })
       setPeriodContents(current => current.filter(item => item.id !== id))
+      setSelectedPeriodImageIds(current => current.filter(itemId => itemId !== id))
       if (titleImageId === id) setTitleImageId('')
       if (currentContentId === id) setImageView('grid')
       await loadPeriods()
@@ -353,8 +380,11 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
       setError('Could not update this tag.')
       return false
     }
-    await loadPeriodContents(editing!.id)
-    await onTagsChanged()
+    setPeriodContents(current => current.map(content => content.id !== id ? content : {
+      ...content,
+      tags: remove ? content.tags.filter(existingTag => existingTag !== tag) : [...new Set([...content.tags, tag])].sort(),
+    }))
+    await onTagsChanged(tag, remove)
     return true
   }
 
@@ -405,7 +435,7 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
         {!isNew && editing && <span className="period-detail-dates">{formatDate(editing.startDate)} – {formatDate(editing.endDate)}</span>}
       </div>
       {!isNew && <div className="period-view-actions">
-        <button className="button button-primary" type="button" onClick={() => { setSelection({ mode: 'some', ids: [] }); setAddPopupOpen(true) }}>Add images</button>
+        <button className="button button-primary" type="button" onClick={() => { addImageSelectionAnchor.current = null; setSelection({ mode: 'some', ids: [] }); setAddPopupOpen(true) }}>Add images</button>
         <div className="view-toggle" role="group" aria-label="Period image view">
           <button className={`button ${imageView === 'grid' ? 'button-primary' : ''}`} type="button" onClick={() => setImageView('grid')} aria-pressed={imageView === 'grid'}>Grid</button>
           <button className={`button ${imageView === 'single' ? 'button-primary' : ''}`} type="button" onClick={() => { if (periodContents.length) openSingle(currentContent ?? periodContents[0]) }} disabled={!periodContents.length} aria-pressed={imageView === 'single'}>Single</button>
@@ -415,12 +445,21 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     {error && <p className="period-error" role="alert">{error}</p>}
     <form className="period-form" onSubmit={event => event.preventDefault()}>
       <label>Period name<input className="tag-input" required maxLength={200} value={name} onChange={event => setName(event.target.value)} onBlur={event => { setName(event.target.value); void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>) }} /></label>
-      <label>Start date<input type="text" required inputMode="numeric" pattern="\d{2}\.\d{2}\.\d{4}" value={startDate} onChange={event => setStartDate(event.target.value)} onBlur={() => void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>)} /></label>
-      <label>End date<input type="text" required inputMode="numeric" pattern="\d{2}\.\d{2}\.\d{4}" value={endDate} onChange={event => setEndDate(event.target.value)} onBlur={() => void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>)} /></label>
+      <label>Start date<DateInput required value={startDate} onChange={setStartDate} onBlur={() => void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>)} /></label>
+      <label>End date<DateInput required value={endDate} onChange={setEndDate} onBlur={() => void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>)} /></label>
     </form>
     {!isNew && editing && (imageView === 'grid'
       ? periodContents.length === 0 ? <p className="state">No images in this period yet. Add images to get started.</p> : <>
         <div className="selection-toolbar">
+          <label className="selection-all-control">
+            <input
+              ref={selectAllPeriodImagesRef}
+              type="checkbox"
+              checked={allPeriodImagesSelected}
+              onChange={() => setSelectedPeriodImageIds(allPeriodImagesSelected ? [] : periodContents.map(item => item.id))}
+            />
+            <span>Select all</span>
+          </label>
           <span className="selection-count" aria-live="polite">{selectedPeriodImageIds.length} selected</span>
           <button className="button selection-actions-trigger" type="button" aria-label="Actions for selected period images" disabled={!selectedPeriodImageIds.length} onClick={event => {
             const rect = event.currentTarget.getBoundingClientRect()
@@ -435,7 +474,7 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
               {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">▶</span>}
               {titleImageId === item.id && <span className="period-title-badge">Title</span>}
             </button>
-            <label className="content-selection-control"><input type="checkbox" checked={selectedPeriodImageIds.includes(item.id)} onChange={() => setSelectedPeriodImageIds(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])} aria-label={`Select image ${item.id.slice(0, 8)}`} /></label>
+            <label className="content-selection-control"><input type="checkbox" checked={selectedPeriodImageIds.includes(item.id)} onChange={event => togglePeriodImageSelection(item.id, (event.nativeEvent as globalThis.MouseEvent).shiftKey)} aria-label={`Select image ${item.id.slice(0, 8)}`} /></label>
           </div>
           <div className="content-details">
             <div className="card-tags">{item.tags.map(tag => <span className="tag" key={tag}>{tag}</span>)}{item.autoTags.map(tag => <span className="tag tag-auto" key={tag}>{tag}</span>)}</div>
@@ -477,7 +516,7 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
           isSelected={id => selection.mode === 'all' ? !selection.excludedIds.includes(id) : selection.ids.includes(id)}
           onToggleAll={toggleAll}
           onToggle={toggleContent}
-          onOpen={item => toggleContent(item.id)}
+          onOpen={(item, shiftKey) => toggleContent(item.id, shiftKey)}
           renderDetails={item => <div className="content-details">{[...item.tags, ...item.autoTags].map(tag => <span key={tag} className={`tag ${item.autoTags.includes(tag) ? 'tag-auto' : ''}`}>{tag}</span>)}</div>}
           endRef={endRef}
         />
@@ -486,6 +525,7 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     </div>}
     {contextMenu && <div className="period-context-backdrop" onClick={() => setContextMenu(null)} onContextMenu={event => { event.preventDefault(); setContextMenu(null) }}>
       <div className="period-context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={event => event.stopPropagation()}>
+        <button type="button" role="menuitem" disabled={busy || contextMenu.id === titleImageId} onClick={() => void setTitleImage(contextMenu.id)}>Make title</button>
         <button type="button" role="menuitem" disabled={busy} onClick={() => { const id = contextMenu.id; setContextMenu(null); void removeContent(id) }}>Remove</button>
       </div>
     </div>}

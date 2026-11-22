@@ -45,6 +45,7 @@ export default function App() {
   const selectedTagsRef = useRef(selectedTags)
   const nextPageRequest = useRef<Promise<ContentItem[]> | null>(null)
   const gridEndRef = useRef<HTMLDivElement>(null)
+  const contentSelectionAnchor = useRef<string | null>(null)
   selectedTagsRef.current = selectedTags
 
   const refresh = useCallback(async (tags = selectedTags) => {
@@ -71,6 +72,22 @@ export default function App() {
       setApiAvailable(false)
     } finally {
       setLoading(false)
+    }
+  }, [selectedTags])
+
+  const refreshTagData = useCallback(async () => {
+    const tagParams = new URLSearchParams()
+    selectedTags.forEach(tag => tagParams.append('tag', tag))
+    try {
+      const response = await fetch(`${API}/api/tags?${tagParams}`)
+      if (!response.ok) throw new Error('Could not load tags')
+      const tagResult = await response.json() as { tags: string[]; autoTags: string[]; availableTags: string[] }
+      setAllTags(tagResult.tags)
+      setAutoTagNames(tagResult.autoTags)
+      setAvailableTags(tagResult.availableTags)
+      setTagsLoaded(true)
+    } catch {
+      setApiAvailable(false)
     }
   }, [selectedTags])
 
@@ -190,7 +207,7 @@ export default function App() {
       await refresh()
       return true
     }
-    await refresh()
+    await refreshTagData()
     return true
   }
 
@@ -206,6 +223,11 @@ export default function App() {
       return false
     }
     return true
+  }
+
+  async function handlePeriodTagsChanged(tag: string, remove: boolean) {
+    if (remove && selectedTags.includes(tag)) await refresh()
+    else await refreshTagData()
   }
 
   async function saveMetadata(id: string, description: string, takenAt: string | null): Promise<boolean> {
@@ -255,7 +277,17 @@ export default function App() {
     </div>
   </nav>
 
-  function toggleContentSelection(id: string) {
+  function toggleContentSelection(id: string, shiftKey = false) {
+    if (shiftKey && contentSelectionAnchor.current) {
+      const anchorIndex = visible.findIndex(item => item.id === contentSelectionAnchor.current)
+      const clickedIndex = visible.findIndex(item => item.id === id)
+      if (anchorIndex >= 0 && clickedIndex >= 0) {
+        const [start, end] = [anchorIndex, clickedIndex].sort((a, b) => a - b)
+        setContentSelection({ mode: 'some', ids: visible.slice(start, end + 1).map(item => item.id) })
+        return
+      }
+    }
+    contentSelectionAnchor.current = id
     setContentSelection(current => {
       if (current.mode === 'all') {
         const excluded = new Set(current.excludedIds)
@@ -290,7 +322,20 @@ export default function App() {
     const ids = await selectedContentIds()
     const ok = await updateTagForContent(ids, tag)
     setActionsMenu(null)
-    if (ok) { setNotice(`Added tag “${tag}” to ${ids.length} images.`); await refresh() }
+    if (ok) {
+      const selectedIds = new Set(ids)
+      const currentPage = pageRef.current
+      const updatedPage = {
+        ...currentPage,
+        items: currentPage.items.map(item => selectedIds.has(item.id)
+          ? { ...item, tags: [...new Set([...item.tags, tag])].sort() }
+          : item),
+      }
+      pageRef.current = updatedPage
+      setPage(updatedPage)
+      setNotice(`Added tag “${tag}” to ${ids.length} images.`)
+      await refreshTagData()
+    }
     else setNotice('Could not apply the selected tag.')
   }
 
@@ -498,7 +543,11 @@ export default function App() {
         : contentSelection.ids.includes(id)}
       onToggleAll={toggleAllContentSelection}
       onToggle={toggleContentSelection}
-      onOpen={item => {
+      onOpen={(item, shiftKey) => {
+        if (shiftKey) {
+          toggleContentSelection(item.id, true)
+          return
+        }
         setSelectedId(item.id)
         setViewMode('single')
       }}
@@ -575,7 +624,7 @@ export default function App() {
       autoTagNames={autoTagNames}
       endRef={gridEndRef}
       loadNextBatch={loadNextBatch}
-      onTagsChanged={refresh}
+      onTagsChanged={handlePeriodTagsChanged}
       tagShortcuts={tagShortcuts}
       onShortcutChange={(number, tag) => setTagShortcuts(current => ({ ...current, [number]: tag }))}
     />}

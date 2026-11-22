@@ -288,7 +288,7 @@ button:disabled { cursor: wait; opacity: .6; }
 .period-associated-item { position: relative; display: grid; width: 116px; gap: 5px; }
 .period-associated-item img { width: 116px; height: 86px; object-fit: cover; background: var(--surface-muted); }
 .period-associated-item .text-button { text-align: left; }
-.period-title-badge { position: absolute; top: 5px; left: 5px; padding: 3px 6px; border-radius: 3px; background: var(--primary-bg); color: var(--primary-text); font-size: 10px; }
+.period-title-badge { position: absolute; top: 5px; right: 5px; padding: 3px 6px; border-radius: 3px; background: var(--primary-bg); color: var(--primary-text); font-size: 10px; }
 .period-content-picker .tag-picker { margin-bottom: 0; }
 .period-add-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 0 28px; color: var(--text-muted); font-size: 13px; }
 .period-error { padding: 10px 12px; border: 1px solid var(--error-border); border-radius: 4px; background: var(--error-bg); color: var(--error-text); font-size: 13px; }
@@ -476,6 +476,11 @@ button:disabled { cursor: wait; opacity: .6; }
 .content-capture-date label { margin: 0; font-size: 14px; font-weight: 600; }
 .content-capture-date-controls { display: flex; align-items: center; gap: 6px; }
 .content-capture-date input { width: min(100%, 320px); padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+.date-input-control { position: relative; display: inline-flex; min-width: 0; width: 100%; }
+.date-input-display { min-width: 0; width: 100%; padding-right: 38px !important; }
+.date-input-picker { position: absolute; top: 50%; right: 11px; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.date-input-native { position: absolute; top: 0; right: 0; width: 36px !important; height: 100%; padding: 0 !important; opacity: 0; cursor: pointer; }
+.date-input-native:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tag-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .tag-shortcut { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .tag-shortcut kbd { display: grid; width: 24px; height: 28px; flex: 0 0 24px; place-items: center; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--soft-bg); color: var(--text); font: inherit; font-size: 12px; }
