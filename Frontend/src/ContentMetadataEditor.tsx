@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
 export type EditableContent = {
-  hash: string
+  id: string
   addedAt: string
   takenAt: string | null
   tags: string[]
@@ -15,12 +15,12 @@ type Props = {
   autoTagNames: string[]
   description: string
   onDescriptionChange: (value: string) => void
-  onSaveMetadata: (hash: string, description: string, takenAt: string | null) => Promise<boolean>
+  onSaveMetadata: (id: string, description: string, takenAt: string | null) => Promise<boolean>
   tagShortcuts: Record<string, string>
   onShortcutChange: (number: string, tag: string) => void
-  onApplyShortcut: (hash: string, tag: string) => void
-  onAddTag: (hash: string, tag: string) => Promise<boolean>
-  onRemoveTag: (hash: string, tag: string) => void
+  onApplyShortcut: (id: string, tag: string) => void
+  onAddTag: (id: string, tag: string) => Promise<boolean>
+  onRemoveTag: (id: string, tag: string) => void
 }
 
 function formatDate(value: string) {
@@ -45,10 +45,10 @@ export default function ContentMetadataEditor({
   const [takenAtDraft, setTakenAtDraft] = useState(content.takenAt?.slice(0, 10) ?? '')
   const [dateError, setDateError] = useState('')
 
-  useEffect(() => setTagDraft(''), [content.hash])
+  useEffect(() => setTagDraft(''), [content.id])
   useEffect(() => {
     setTakenAtDraft(content.takenAt?.slice(0, 10) ?? '')
-  }, [content.hash, content.takenAt])
+  }, [content.id, content.takenAt])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -59,17 +59,17 @@ export default function ContentMetadataEditor({
       if (tag) {
         event.preventDefault()
         event.stopPropagation()
-        onApplyShortcut(content.hash, tag)
+        onApplyShortcut(content.id, tag)
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [content.hash, tagShortcuts, onApplyShortcut])
+  }, [content.id, tagShortcuts, onApplyShortcut])
 
   async function addTag(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const tag = tagDraft.trim()
-    if (tag && !autoTagNames.includes(tag.toLowerCase()) && await onAddTag(content.hash, tag)) setTagDraft('')
+    if (tag && !autoTagNames.includes(tag.toLowerCase()) && await onAddTag(content.id, tag)) setTagDraft('')
   }
 
   return <>
@@ -82,7 +82,7 @@ export default function ContentMetadataEditor({
           maxLength={5000}
           value={description}
           onChange={event => onDescriptionChange(event.target.value)}
-          onBlur={event => { void onSaveMetadata(content.hash, event.currentTarget.value, content.takenAt) }}
+          onBlur={event => { void onSaveMetadata(content.id, event.currentTarget.value, content.takenAt) }}
         />
       </div>
       <section className="tag-shortcut-section" aria-label="Number key tag shortcuts">
@@ -107,11 +107,11 @@ export default function ContentMetadataEditor({
     </section>
     <div className="content-capture-date">
       <label htmlFor="content-capture-date">Capture date</label>
-      <div className="content-capture-date-controls"><input id="content-capture-date" type="date" value={takenAtDraft} onChange={event => { setTakenAtDraft(event.target.value); setDateError(''); void onSaveMetadata(content.hash, description, event.target.value || null) }} /><button type="button" className="button" aria-label="Clear capture date" title="Clear capture date" disabled={!takenAtDraft} onClick={() => { setTakenAtDraft(''); setDateError(''); void onSaveMetadata(content.hash, description, null) }}>×</button></div>
+      <div className="content-capture-date-controls"><input id="content-capture-date" type="date" value={takenAtDraft} onChange={event => { setTakenAtDraft(event.target.value); setDateError(''); void onSaveMetadata(content.id, description, event.target.value || null) }} /><button type="button" className="button" aria-label="Clear capture date" title="Clear capture date" disabled={!takenAtDraft} onClick={() => { setTakenAtDraft(''); setDateError(''); void onSaveMetadata(content.id, description, null) }}>×</button></div>
       {dateError && <span className="content-date-error" role="alert">{dateError}</span>}
     </div>
     <div className="single-content-tags">
-      {content.tags.map(tag => <button key={tag} className="tag" type="button" onClick={() => onRemoveTag(content.hash, tag)} title={`Remove ${tag}`}>
+      {content.tags.map(tag => <button key={tag} className="tag" type="button" onClick={() => onRemoveTag(content.id, tag)} title={`Remove ${tag}`}>
         {tag}<span aria-hidden="true"> ×</span>
       </button>)}
       {content.autoTags.map(tag => <span key={tag} className="tag tag-auto" title="Assigned automatically">{tag}</span>)}

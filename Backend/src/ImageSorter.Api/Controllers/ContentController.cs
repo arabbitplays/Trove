@@ -13,17 +13,17 @@ public sealed class ContentController(ContentService service) : ControllerBase
     public async Task<IActionResult> List([FromQuery] string[]? tag, [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct) =>
         Ok(await service.ListAsync(tag, skip ?? 0, take ?? 50, ct));
 
-    [HttpGet("contents/{hash}/thumbnail")]
-    public async Task<IActionResult> Thumbnail(string hash, CancellationToken ct)
+    [HttpGet("contents/{id:guid}/thumbnail")]
+    public async Task<IActionResult> Thumbnail(Guid id, CancellationToken ct)
     {
-        var thumbnail = await service.GetThumbnailAsync(hash, ct);
+        var thumbnail = await service.GetThumbnailAsync(id, ct);
         return thumbnail is null ? NotFound() : File(thumbnail, "image/jpeg");
     }
 
-    [HttpGet("contents/{hash}/content")]
-    public async Task<IActionResult> Content(string hash, CancellationToken ct)
+    [HttpGet("contents/{id:guid}/content")]
+    public async Task<IActionResult> Content(Guid id, CancellationToken ct)
     {
-        var path = await service.FindContentPathAsync(hash, ct);
+        var path = await service.FindContentPathAsync(id, ct);
         if (path is null) return NotFound();
 
         var contentType = Path.GetExtension(path).ToLowerInvariant() switch
@@ -48,12 +48,12 @@ public sealed class ContentController(ContentService service) : ControllerBase
         return PhysicalFile(path, contentType, enableRangeProcessing: true);
     }
 
-    [HttpPut("contents/{hash}/metadata")]
-    public async Task<IActionResult> SetMetadata(string hash, [FromBody] MetadataRequest request, CancellationToken ct)
+    [HttpPut("contents/{id:guid}/metadata")]
+    public async Task<IActionResult> SetMetadata(Guid id, [FromBody] MetadataRequest request, CancellationToken ct)
     {
         try
         {
-            await service.SetMetadataAsync(hash, request.Description, request.TakenAt, ct);
+            await service.SetMetadataAsync(id, request.Description, request.TakenAt, ct);
             return NoContent();
         }
         catch (ArgumentException error)

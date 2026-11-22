@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using ImageSorter.Application.Abstractions;
 
 namespace ImageSorter.Infrastructure.Storage;
@@ -13,22 +12,17 @@ public sealed class LocalContentStorage : IContentStorage
 
     public string RootPath { get; }
 
-    public async Task<(string Hash, string Path)> SaveAsync(Stream content, string extension, CancellationToken ct)
+    public async Task<string> SaveAsync(Stream content, string extension, Guid id, CancellationToken ct)
     {
         var temporary = Path.Combine(RootPath, $".{Guid.NewGuid():N}.upload");
         try
         {
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
                 await content.CopyToAsync(output, ct);
-            string hash;
-            string destination;
-            do
-            {
-                hash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-                destination = Path.Combine(RootPath, hash + extension.ToLowerInvariant());
-            } while (File.Exists(destination));
+            var destination = Path.Combine(RootPath, id.ToString("D") + extension.ToLowerInvariant());
+            if (File.Exists(destination)) throw new IOException($"A file already exists for content '{id}'.");
             File.Move(temporary, destination);
-            return (hash, destination);
+            return destination;
         }
         finally
         {
@@ -36,39 +30,37 @@ public sealed class LocalContentStorage : IContentStorage
         }
     }
 
-    public Task DeleteAsync(string hash, CancellationToken ct)
+    public Task DeleteAsync(Guid id, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (!IsHash(hash)) return Task.CompletedTask;
+        var name = id.ToString("D");
 
-        foreach (var path in Directory.EnumerateFiles(RootPath, hash + ".*"))
+        foreach (var path in Directory.EnumerateFiles(RootPath, name + ".*"))
             File.Delete(path);
-        var thumbnail = Path.Combine(RootPath, ".thumbnails", hash + ".jpg");
+        var thumbnail = Path.Combine(RootPath, ".thumbnails", name + ".jpg");
         if (File.Exists(thumbnail)) File.Delete(thumbnail);
         return Task.CompletedTask;
     }
 
-    public Task<string?> FindPathAsync(string hash, CancellationToken ct)
+    public Task<string?> FindPathAsync(Guid id, CancellationToken ct)
     {
-        if (!IsHash(hash)) return Task.FromResult<string?>(null);
-        var path = Directory.EnumerateFiles(RootPath, hash + ".*").FirstOrDefault();
+        var path = Directory.EnumerateFiles(RootPath, id.ToString("D") + ".*").FirstOrDefault();
         return Task.FromResult(path);
     }
 
-    public async IAsyncEnumerable<(string Hash, string Path)> EnumerateAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<(Guid Id, string Path)> EnumerateAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         foreach (var path in Directory.EnumerateFiles(RootPath))
         {
             ct.ThrowIfCancellationRequested();
             var name = Path.GetFileName(path);
             if (name.StartsWith('.') || name.EndsWith(".upload", StringComparison.OrdinalIgnoreCase)) continue;
-            var hash = Path.GetFileNameWithoutExtension(name);
-            if (IsHash(hash)) yield return (hash, path);
+            var idText = Path.GetFileNameWithoutExtension(name);
+            if (Guid.TryParse(idText, out var id)) yield return (id, path);
             await Task.Yield();
         }
     }
 
-    private static bool IsHash(string value) => value.Length == 64 && value.All(Uri.IsHexDigit);
 }
 
 public sealed class SystemClock : IClock { public DateTimeOffset UtcNow => DateTimeOffset.UtcNow; }

@@ -6,15 +6,15 @@ public sealed class ContentRecord
 
     private ContentRecord() { }
 
-    public ContentRecord(string hash, string contentType, DateTimeOffset addedAt, DateOnly? takenAt)
+    public ContentRecord(Guid id, string contentType, DateTimeOffset addedAt, DateOnly? takenAt)
     {
-        Hash = hash;
+        Id = id;
         ContentType = contentType;
         AddedAt = addedAt;
         TakenAt = takenAt;
     }
 
-    public string Hash { get; private set; } = string.Empty;
+    public Guid Id { get; private set; }
     public string ContentType { get; private set; } = "application/octet-stream";
     public DateTimeOffset AddedAt { get; private set; }
     public DateOnly? TakenAt { get; private set; }
@@ -45,8 +45,8 @@ public sealed class Tag
 public sealed class ContentTag
 {
     private ContentTag() { }
-    public ContentTag(string contentHash, string tagName) { ContentHash = contentHash; TagName = tagName; }
-    public string ContentHash { get; private set; } = string.Empty;
+    public ContentTag(Guid contentId, string tagName) { ContentId = contentId; TagName = tagName; }
+    public Guid ContentId { get; private set; }
     public ContentRecord Content { get; private set; } = null!;
     public string TagName { get; private set; } = string.Empty;
     public Tag Tag { get; private set; } = null!;

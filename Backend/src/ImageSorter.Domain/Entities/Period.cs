@@ -16,7 +16,7 @@ public sealed class Period
     public string Name { get; private set; } = string.Empty;
     public DateOnly StartDate { get; private set; }
     public DateOnly EndDate { get; private set; }
-    public string? TitleImageHash { get; private set; }
+    public Guid? TitleImageId { get; private set; }
     public ICollection<PeriodContent> Contents => _contents;
 
     public void Update(string name, DateOnly startDate, DateOnly endDate)
@@ -26,21 +26,21 @@ public sealed class Period
         EndDate = endDate;
     }
 
-    public void SetTitleImage(string? hash) => TitleImageHash = hash;
+    public void SetTitleImage(Guid? id) => TitleImageId = id;
 }
 
 public sealed class PeriodContent
 {
     private PeriodContent() { }
 
-    public PeriodContent(Guid periodId, string contentHash)
+    public PeriodContent(Guid periodId, Guid contentId)
     {
         PeriodId = periodId;
-        ContentHash = contentHash;
+        ContentId = contentId;
     }
 
     public Guid PeriodId { get; private set; }
     public Period Period { get; private set; } = null!;
-    public string ContentHash { get; private set; } = string.Empty;
+    public Guid ContentId { get; private set; }
     public ContentRecord Content { get; private set; } = null!;
 }

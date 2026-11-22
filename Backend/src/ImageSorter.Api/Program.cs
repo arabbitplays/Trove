@@ -33,7 +33,8 @@ try
         .ConfigureWarnings(warnings => warnings.Log((RelationalEventId.CommandExecuted, Microsoft.Extensions.Logging.LogLevel.Trace))));
     builder.Services.AddScoped<IContentCatalog, EfContentCatalog>();
     builder.Services.AddScoped<IPeriodCatalog>(services => (EfContentCatalog)services.GetRequiredService<IContentCatalog>());
-    builder.Services.AddSingleton<IContentStorage>(_ => new LocalContentStorage(contentPath));
+    builder.Services.AddSingleton(_ => new LocalContentStorage(contentPath));
+    builder.Services.AddSingleton<IContentStorage>(services => services.GetRequiredService<LocalContentStorage>());
     builder.Services.AddSingleton<IImageProcessor, MagickImageProcessor>();
     builder.Services.AddSingleton<IVideoProcessor, FfmpegVideoProcessor>();
     builder.Services.AddSingleton<IClock, SystemClock>();

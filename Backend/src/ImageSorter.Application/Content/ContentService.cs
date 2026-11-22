@@ -3,9 +3,9 @@ using ImageSorter.Domain.Entities;
 
 namespace ImageSorter.Application.Content;
 
-public sealed record ContentDto(string Hash, DateTimeOffset AddedAt, DateOnly? TakenAt, IReadOnlyList<string> Tags, IReadOnlyList<string> AutoTags, string MediaType, string Description);
+public sealed record ContentDto(Guid Id, DateTimeOffset AddedAt, DateOnly? TakenAt, IReadOnlyList<string> Tags, IReadOnlyList<string> AutoTags, string MediaType, string Description);
 public sealed record ContentPage(IReadOnlyList<ContentDto> Items, int Total, int Skip, int Take);
-public sealed record ImportResult(int Imported, IReadOnlyList<string> Errors, IReadOnlyList<string> Hashes);
+public sealed record ImportResult(int Imported, IReadOnlyList<string> Errors, IReadOnlyList<Guid> Ids);
 
 public sealed class ContentService(IContentCatalog catalog, IContentStorage storage, IClock clock, IImageProcessor imageProcessor, IVideoProcessor videoProcessor)
 {
@@ -27,7 +27,7 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
     public async Task<ImportResult> ImportAsync(IEnumerable<(Stream Content, string Name)> files, CancellationToken ct)
     {
         var imported = 0; var errors = new List<string>();
-        var importedHashes = new List<string>();
+        var importedIds = new List<Guid>();
         foreach (var (content, name) in files)
         {
             await using var input = content;
@@ -49,44 +49,45 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
                     extension = ".png";
                 }
 
-                var (hash, path) = await storage.SaveAsync(importContent, extension, ct);
+                var id = Guid.NewGuid();
+                await storage.SaveAsync(importContent, extension, id, ct);
                 var type = ContentTypeFor(extension);
                 try
                 {
-                    await catalog.AddAsync(new ContentRecord(hash, type, clock.UtcNow, takenAt), ct);
+                    await catalog.AddAsync(new ContentRecord(id, type, clock.UtcNow, takenAt), ct);
                     imported++;
-                    importedHashes.Add(hash);
+                    importedIds.Add(id);
                 }
                 catch
                 {
-                    if (!await catalog.ExistsAsync(hash, ct)) File.Delete(path);
+                    if (!await catalog.ExistsAsync(id, ct)) await storage.DeleteAsync(id, ct);
                     throw;
                 }
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             { errors.Add($"{name}: {e.Message}"); }
         }
-        await catalog.ApplyImportTagsAsync(importedHashes, [], "new", ct);
-        return new ImportResult(imported, errors, importedHashes);
+        await catalog.ApplyImportTagsAsync(importedIds, [], "new", ct);
+        return new ImportResult(imported, errors, importedIds);
     }
 
-    public Task<string?> FindContentPathAsync(string hash, CancellationToken ct) => storage.FindPathAsync(hash, ct);
+    public Task<string?> FindContentPathAsync(Guid id, CancellationToken ct) => storage.FindPathAsync(id, ct);
 
-    public async Task SetMetadataAsync(string hash, string? description, DateOnly? takenAt, CancellationToken ct)
+    public async Task SetMetadataAsync(Guid id, string? description, DateOnly? takenAt, CancellationToken ct)
     {
         if (description?.Length > 5000) throw new ArgumentException("Descriptions cannot exceed 5000 characters.");
-        if (!await catalog.SetMetadataAsync(hash, description, takenAt, ct))
-            throw new KeyNotFoundException($"Content '{hash}' was not found.");
+        if (!await catalog.SetMetadataAsync(id, description, takenAt, ct))
+            throw new KeyNotFoundException($"Content '{id}' was not found.");
     }
 
-    public async Task<byte[]?> GetThumbnailAsync(string hash, CancellationToken ct)
+    public async Task<byte[]?> GetThumbnailAsync(Guid id, CancellationToken ct)
     {
-        var contentPath = await storage.FindPathAsync(hash, ct);
+        var contentPath = await storage.FindPathAsync(id, ct);
         if (contentPath is null) return null;
 
         var thumbnailDirectory = Path.Combine(storage.RootPath, ".thumbnails");
         Directory.CreateDirectory(thumbnailDirectory);
-        var thumbnailPath = Path.Combine(thumbnailDirectory, hash + ".jpg");
+        var thumbnailPath = Path.Combine(thumbnailDirectory, id.ToString("D") + ".jpg");
         if (File.Exists(thumbnailPath)) return await File.ReadAllBytesAsync(thumbnailPath, ct);
 
         var thumbnail = IsVideoPath(contentPath)
@@ -108,9 +109,9 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
 
     private async Task ReconcileStorageAsync(CancellationToken ct)
     {
-        await foreach (var (hash, path) in storage.EnumerateAsync(ct))
+        await foreach (var (id, path) in storage.EnumerateAsync(ct))
         {
-            if (await catalog.ExistsAsync(hash, ct)) continue;
+            if (await catalog.ExistsAsync(id, ct)) continue;
             var extension = Path.GetExtension(path);
             var mediaType = ContentTypeFor(extension);
             DateOnly? takenAt = null;
@@ -119,12 +120,12 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
                 await using var stream = File.OpenRead(path);
                 takenAt = imageProcessor.GetDateTaken(stream);
             }
-            await catalog.AddAsync(new ContentRecord(hash, mediaType, new DateTimeOffset(File.GetCreationTimeUtc(path), TimeSpan.Zero), takenAt), ct);
+            await catalog.AddAsync(new ContentRecord(id, mediaType, new DateTimeOffset(File.GetCreationTimeUtc(path), TimeSpan.Zero), takenAt), ct);
         }
     }
 
     private static ContentDto ToDto(ContentRecord content) => new(
-        content.Hash,
+        content.Id,
         content.AddedAt,
         content.TakenAt,
         content.ContentTags.Where(link => !link.Tag.IsAuto).Select(link => link.TagName).Order().ToArray(),

@@ -7,9 +7,9 @@ namespace ImageSorter.Api.Controllers;
 [Route("api/periods")]
 public sealed class PeriodController(PeriodService service) : ControllerBase
 {
-    public sealed record CreatePeriodRequest(string Name, DateOnly StartDate, DateOnly EndDate, string[]? ContentHashes);
-    public sealed record UpdatePeriodRequest(string Name, DateOnly StartDate, DateOnly EndDate, string? TitleImageHash);
-    public sealed record AddPeriodContentsRequest(string[]? Hashes, string[]? Tags, bool AllMatching, string[]? ExcludedHashes);
+    public sealed record CreatePeriodRequest(string Name, DateOnly StartDate, DateOnly EndDate, Guid[]? ContentIds);
+    public sealed record UpdatePeriodRequest(string Name, DateOnly StartDate, DateOnly EndDate, Guid? TitleImageId);
+    public sealed record AddPeriodContentsRequest(Guid[]? Ids, string[]? Tags, bool AllMatching, Guid[]? ExcludedIds);
 
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct) => Ok(await service.ListAsync(ct));
@@ -33,7 +33,7 @@ public sealed class PeriodController(PeriodService service) : ControllerBase
     {
         try
         {
-            var period = await service.CreateAsync(request.Name, request.StartDate, request.EndDate, request.ContentHashes, ct);
+            var period = await service.CreateAsync(request.Name, request.StartDate, request.EndDate, request.ContentIds, ct);
             return CreatedAtAction(nameof(Get), new { id = period.Id }, period);
         }
         catch (KeyNotFoundException error) { return NotFound(new { error = error.Message }); }
@@ -45,7 +45,7 @@ public sealed class PeriodController(PeriodService service) : ControllerBase
     {
         try
         {
-            return await service.UpdateAsync(id, request.Name, request.StartDate, request.EndDate, request.TitleImageHash, ct)
+            return await service.UpdateAsync(id, request.Name, request.StartDate, request.EndDate, request.TitleImageId, ct)
                 ? NoContent()
                 : NotFound();
         }
@@ -57,14 +57,14 @@ public sealed class PeriodController(PeriodService service) : ControllerBase
     {
         try
         {
-            return await service.AddContentsAsync(id, request.Hashes, request.Tags, request.AllMatching, request.ExcludedHashes, ct)
+            return await service.AddContentsAsync(id, request.Ids, request.Tags, request.AllMatching, request.ExcludedIds, ct)
                 ? NoContent()
                 : NotFound();
         }
         catch (KeyNotFoundException error) { return NotFound(new { error = error.Message }); }
     }
 
-    [HttpDelete("{id:guid}/contents/{hash}")]
-    public async Task<IActionResult> RemoveContent(Guid id, string hash, CancellationToken ct) =>
-        await service.RemoveContentAsync(id, hash, ct) ? NoContent() : NotFound();
+    [HttpDelete("{id:guid}/contents/{contentId:guid}")]
+    public async Task<IActionResult> RemoveContent(Guid id, Guid contentId, CancellationToken ct) =>
+        await service.RemoveContentAsync(id, contentId, ct) ? NoContent() : NotFound();
 }

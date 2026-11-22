@@ -47,6 +47,6 @@ The default PostgreSQL connection is `Host=localhost;Port=5432;Database=imageman
 - `Backend/src/ImageSorter.Api`: HTTP endpoints and dependency configuration.
 - `Frontend`: React and TypeScript client.
 
-The database uses `contents`, `tags`, `content_tags`, `periods`, and `period_contents` tables. EF Core creates the schema on startup when the database is empty. The API reconciles hash-named files already in the media directory into the catalog when listing the collection.
+The database uses GUID identifiers for content and its tag and period relationships. Files and thumbnails use the same GUID names. EF Core creates the schema on startup when the database is empty; the API reconciles GUID-named files already in the media directory into the catalog when listing the collection.
 
 Supported image extensions are JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, and HEIC. Supported video extensions are MP4, M4V, MOV, AVI, MKV, WebM, MPG, MPEG, and 3GP. HEIC images are converted to PNG; other files are stored without transcoding. FFmpeg and FFprobe must be available on `PATH` for video thumbnails and duplicate checks.

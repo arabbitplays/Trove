@@ -17,11 +17,11 @@ public sealed class TagController(TagService service, ContentService contentServ
             await contentService.GetAvailableTagsAsync(tag, ct)));
 
     [HttpPut("tags/{tag}")]
-    public async Task<IActionResult> Add(string tag, [FromBody] string[] hashes, CancellationToken ct)
+    public async Task<IActionResult> Add(string tag, [FromBody] Guid[] ids, CancellationToken ct)
     {
         try
         {
-            await service.AddAsync(hashes, tag, ct);
+            await service.AddAsync(ids, tag, ct);
             return NoContent();
         }
         catch (KeyNotFoundException)
@@ -35,11 +35,11 @@ public sealed class TagController(TagService service, ContentService contentServ
     }
 
     [HttpDelete("tags/{tag}")]
-    public async Task<IActionResult> Remove(string tag, [FromBody] string[] hashes, CancellationToken ct)
+    public async Task<IActionResult> Remove(string tag, [FromBody] Guid[] ids, CancellationToken ct)
     {
         try
         {
-            await service.RemoveAsync(hashes, tag, ct);
+            await service.RemoveAsync(ids, tag, ct);
             return NoContent();
         }
         catch (ArgumentException error)

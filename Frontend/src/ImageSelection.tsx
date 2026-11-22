@@ -2,7 +2,7 @@ import { type ReactNode, type RefObject, useEffect, useRef } from 'react'
 import { Play } from 'lucide-react'
 
 export type SelectableContent = {
-  hash: string
+  id: string
   addedAt: string
   takenAt: string | null
   tags: string[]
@@ -16,9 +16,9 @@ type Props<T extends SelectableContent> = {
   total: number
   selectedCount: number
   allSelected: boolean
-  isSelected: (hash: string) => boolean
+  isSelected: (id: string) => boolean
   onToggleAll: () => void
-  onToggle: (hash: string) => void
+  onToggle: (id: string) => void
   onOpen: (item: T) => void
   renderDetails: (item: T) => ReactNode
   endRef: RefObject<HTMLDivElement>
@@ -50,16 +50,16 @@ export default function ImageSelection<T extends SelectableContent>({
       <span className="selection-count" aria-live="polite">{selectedCount.toLocaleString()} selected</span>
     </div>
     <section className="content-grid" aria-label="Select media">
-      {items.map(item => <article className={`content-card ${isSelected(item.hash) ? 'content-card-selected' : ''}`} key={item.hash}>
+      {items.map(item => <article className={`content-card ${isSelected(item.id) ? 'content-card-selected' : ''}`} key={item.id}>
         <div className="content-selection-preview">
-          <button className="content-preview-wrap" type="button" onClick={() => onOpen(item)} aria-label={`Open content ${item.hash.slice(0, 8)}`}>
-            <img className="content-preview" src={`${import.meta.env.VITE_API_URL ?? 'http://localhost:5000'}/api/contents/${item.hash}/thumbnail`} alt="Content" loading="lazy" />
+          <button className="content-preview-wrap" type="button" onClick={() => onOpen(item)} aria-label={`Open content ${item.id.slice(0, 8)}`}>
+            <img className="content-preview" src={`${import.meta.env.VITE_API_URL ?? 'http://localhost:5000'}/api/contents/${item.id}/thumbnail`} alt="Content" loading="lazy" />
             {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">
               <Play size={16} fill="currentColor" aria-hidden="true" />
             </span>}
           </button>
           <label className="content-selection-control">
-            <input type="checkbox" checked={isSelected(item.hash)} onChange={() => onToggle(item.hash)} aria-label={`Select content ${item.hash.slice(0, 8)}`} />
+            <input type="checkbox" checked={isSelected(item.id)} onChange={() => onToggle(item.id)} aria-label={`Select content ${item.id.slice(0, 8)}`} />
           </label>
         </div>
         {renderDetails(item)}
