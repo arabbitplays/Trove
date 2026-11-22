@@ -18,6 +18,10 @@ public interface IContentCatalog
     Task SetTagAsync(Guid id, string tag, CancellationToken cancellationToken);
     Task RemoveTagAsync(Guid id, string tag, CancellationToken cancellationToken);
     Task<bool> SetMetadataAsync(Guid id, string? description, DateOnly? takenAt, CancellationToken cancellationToken);
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
+    Task<bool> RestoreAsync(Guid id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Guid>> GetExpiredDeletedContentAsync(DateTimeOffset cutoff, CancellationToken cancellationToken);
+    Task PurgeDeletedContentAsync(Guid id, CancellationToken cancellationToken);
     Task ApplyImportTagsAsync(IReadOnlyList<Guid> contentIds, IReadOnlyList<string> tags, string newTag, CancellationToken cancellationToken);
 }
 

@@ -21,6 +21,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'content' | 'periods'>('content')
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid')
   const [selectedId, setSelectedId] = useState('')
+  const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number; tagOpen: boolean } | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarMounted, setSidebarMounted] = useState(false)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('content-theme') === 'dark')
@@ -275,6 +276,35 @@ export default function App() {
       : { mode: 'all', excludedIds: [] })
   }
 
+  async function selectedContentIds(): Promise<string[]> {
+    if (contentSelection.mode === 'some') return contentSelection.ids
+    const ids: string[] = []
+    for (let skip = 0; skip < page.total; skip += 100) {
+      const batch = await fetchContentPage(skip, selectedTags)
+      ids.push(...batch.items.map(item => item.id).filter(id => !contentSelection.excludedIds.includes(id)))
+    }
+    return ids
+  }
+
+  async function applyBulkTag(tag: string) {
+    const ids = await selectedContentIds()
+    const ok = await updateTagForContent(ids, tag)
+    setActionsMenu(null)
+    if (ok) { setNotice(`Added tag “${tag}” to ${ids.length} images.`); await refresh() }
+    else setNotice('Could not apply the selected tag.')
+  }
+
+  async function deleteSelectedContent() {
+    const ids = await selectedContentIds()
+    if (!ids.length || !window.confirm(`Delete ${ids.length} selected image${ids.length === 1 ? '' : 's'}?`)) return
+    const results = await Promise.all(ids.map(id => fetch(`${API}/api/contents/${id}`, { method: 'DELETE' })))
+    setActionsMenu(null)
+    if (results.some(response => !response.ok)) setNotice('Some selected images could not be deleted.')
+    else setNotice(`Deleted ${ids.length} images.`)
+    setContentSelection({ mode: 'some', ids: [] })
+    await refresh()
+  }
+
   const loadNextBatch = useCallback((): Promise<ContentItem[]> => {
     if (nextPageRequest.current) return nextPageRequest.current
     const current = pageRef.current
@@ -457,6 +487,11 @@ export default function App() {
       items={visible}
       total={page.total}
       selectedCount={selectedCount}
+      onActions={(x, y) => setActionsMenu({ x, y, tagOpen: false })}
+      onContextMenu={(id, x, y) => {
+        setContentSelection({ mode: 'some', ids: [id] })
+        setActionsMenu({ x, y, tagOpen: false })
+      }}
       allSelected={allSelected}
       isSelected={id => contentSelection.mode === 'all'
         ? !contentSelection.excludedIds.includes(id)
@@ -520,6 +555,15 @@ export default function App() {
         onRemoveTag={(id, tag) => { void updateTag(id, tag, true) }}
       />
     </section> : <p className="state">No content in this view.</p>}
+    {actionsMenu && <div className="actions-menu-backdrop" onClick={() => setActionsMenu(null)} onContextMenu={event => { event.preventDefault(); setActionsMenu(null) }}>
+      <div className="actions-menu" role="menu" style={{ left: Math.min(actionsMenu.x, window.innerWidth - 220), top: Math.min(actionsMenu.y, window.innerHeight - 260) }} onClick={event => event.stopPropagation()}>
+        <button type="button" role="menuitem" onClick={() => void deleteSelectedContent()}>Delete</button>
+        <button type="button" role="menuitem" aria-haspopup="true" aria-expanded={actionsMenu.tagOpen} onClick={() => setActionsMenu(current => current && ({ ...current, tagOpen: !current.tagOpen }))}>Add tag ▸</button>
+        {actionsMenu.tagOpen && <div className="actions-tag-list" role="menu" aria-label="Choose tag">
+          {allTags.length ? allTags.map(tag => <button type="button" role="menuitem" key={tag} onClick={() => void applyBulkTag(tag)}>{tag}</button>) : <span>No existing tags</span>}
+        </div>}
+      </div>
+    </div>}
     </> : <PeriodsView
       contents={visible}
       totalContents={page.total}

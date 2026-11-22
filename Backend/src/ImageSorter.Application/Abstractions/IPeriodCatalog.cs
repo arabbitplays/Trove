@@ -11,4 +11,5 @@ public interface IPeriodCatalog
     Task<bool> UpdatePeriodAsync(Guid id, string name, DateOnly startDate, DateOnly endDate, Guid? titleImageId, CancellationToken cancellationToken);
     Task<bool> AddPeriodContentsAsync(Guid id, IReadOnlyList<Guid> contentIds, IReadOnlyList<string> tags, bool allMatching, IReadOnlyList<Guid> excludedIds, CancellationToken cancellationToken);
     Task<bool> RemovePeriodContentAsync(Guid id, Guid contentId, CancellationToken cancellationToken);
+    Task<bool> DeletePeriodAsync(Guid id, CancellationToken cancellationToken);
 }

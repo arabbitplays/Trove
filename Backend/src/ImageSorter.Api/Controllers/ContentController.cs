@@ -66,6 +66,14 @@ public sealed class ContentController(ContentService service) : ControllerBase
         }
     }
 
+    [HttpDelete("contents/{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct) =>
+        await service.DeleteAsync(id, ct) ? NoContent() : NotFound();
+
+    [HttpPost("contents/{id:guid}/restore")]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken ct) =>
+        await service.RestoreAsync(id, ct) ? NoContent() : NotFound();
+
     [HttpPost("import")]
     public async Task<IActionResult> Import(CancellationToken ct)
     {

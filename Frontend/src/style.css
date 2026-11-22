@@ -361,6 +361,13 @@ button:disabled { cursor: wait; opacity: .6; }
 
 .selection-all-control input, .content-selection-control input { accent-color: var(--primary-bg); }
 .selection-count { color: var(--text-subtle); }
+.selection-actions-trigger { margin-left: auto; min-width: 38px; padding: 5px 10px; font-weight: 700; letter-spacing: 2px; }
+.actions-menu-backdrop { position: fixed; z-index: 40; inset: 0; }
+.actions-menu { position: fixed; display: grid; min-width: 190px; max-height: min(360px, 80vh); overflow: auto; padding: 4px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--surface); box-shadow: 0 6px 24px var(--shadow); }
+.actions-menu button { padding: 9px 10px; border: 0; border-radius: 3px; background: transparent; color: var(--text); text-align: left; font-size: 13px; }
+.actions-menu button:hover { background: var(--button-hover); }
+.actions-tag-list { display: grid; max-height: 180px; overflow-y: auto; padding-left: 10px; border-top: 1px solid var(--border); }
+.actions-tag-list span { padding: 8px; color: var(--text-subtle); font-size: 12px; }
 
 .content-card { min-width: 0; }
 .content-card-selected .content-preview-wrap { outline: 2px solid var(--primary-bg); outline-offset: 2px; }

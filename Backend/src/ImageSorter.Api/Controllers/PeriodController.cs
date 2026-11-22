@@ -67,4 +67,8 @@ public sealed class PeriodController(PeriodService service) : ControllerBase
     [HttpDelete("{id:guid}/contents/{contentId:guid}")]
     public async Task<IActionResult> RemoveContent(Guid id, Guid contentId, CancellationToken ct) =>
         await service.RemoveContentAsync(id, contentId, ct) ? NoContent() : NotFound();
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct) =>
+        await service.DeleteAsync(id, ct) ? NoContent() : NotFound();
 }

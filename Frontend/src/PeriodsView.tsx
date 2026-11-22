@@ -15,6 +15,7 @@ type PeriodRecord = {
 type ContentItem = SelectableContent
 type Selection = { mode: 'some'; ids: string[] } | { mode: 'all'; excludedIds: string[] }
 type ContextMenu = { id: string; x: number; y: number }
+type PeriodContextMenu = { id: string; x: number; y: number }
 
 function formatDate(value: string) {
   const [year, month, day] = value.slice(0, 10).split('-')
@@ -55,10 +56,13 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
   const [endDate, setEndDate] = useState('')
   const [titleImageId, setTitleImageId] = useState('')
   const [periodContents, setPeriodContents] = useState<ContentItem[]>([])
+  const [selectedPeriodImageIds, setSelectedPeriodImageIds] = useState<string[]>([])
+  const [imageActionsMenu, setImageActionsMenu] = useState<{ x: number; y: number } | null>(null)
   const [imageView, setImageView] = useState<'grid' | 'single'>('grid')
   const [currentContentId, setCurrentContentId] = useState('')
   const [addPopupOpen, setAddPopupOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null)
+  const [periodContextMenu, setPeriodContextMenu] = useState<PeriodContextMenu | null>(null)
   const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null)
   const [selection, setSelection] = useState<Selection>({ mode: 'some', ids: [] })
   const [busy, setBusy] = useState(false)
@@ -269,6 +273,36 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     }
   }
 
+  async function deletePeriod(id: string) {
+    const period = periods.find(item => item.id === id)
+    if (!period || !window.confirm(`Delete period “${period.name}”?`)) return
+    const response = await fetch(`${API}/api/periods/${id}`, { method: 'DELETE' })
+    setPeriodContextMenu(null)
+    if (!response.ok) { setError('Could not delete the period.'); return }
+    setPeriods(current => current.filter(item => item.id !== id))
+  }
+
+  async function removeSelectedPeriodImages() {
+    if (!editing || !selectedPeriodImageIds.length) return
+    setBusy(true)
+    setError('')
+    try {
+      for (const id of selectedPeriodImageIds) {
+        const response = await fetch(`${API}/api/periods/${editing.id}/contents/${id}`, { method: 'DELETE' })
+        if (!response.ok) throw new Error('Could not remove selected images from the period.')
+      }
+      const removed = new Set(selectedPeriodImageIds)
+      setPeriodContents(current => current.filter(item => !removed.has(item.id)))
+      setEditing(current => current ? { ...current, contentIds: current.contentIds.filter(id => !removed.has(id)), titleImageId: current.titleImageId && removed.has(current.titleImageId) ? null : current.titleImageId } : current)
+      setTitleImageId(current => current && removed.has(current) ? '' : current)
+      if (currentContentId && removed.has(currentContentId)) setImageView('grid')
+      setSelectedPeriodImageIds([])
+      setImageActionsMenu(null)
+      await loadPeriods()
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not remove selected images.') }
+    finally { setBusy(false) }
+  }
+
   async function setTitleImage(id: string) {
     if (!editing) return
     setBusy(true)
@@ -346,13 +380,21 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     {periods.length === 0 ? <p className="state">No periods yet. Create one to get started.</p> : <div className="period-grid">
       {periods.map(period => {
         const cover = period.titleImageId ?? period.contentIds[0]
-        return <button className="period-card" key={period.id} type="button" onClick={() => beginEdit(period)}>
+        return <button className="period-card" key={period.id} type="button" onClick={() => beginEdit(period)} onContextMenu={event => {
+          event.preventDefault()
+          setPeriodContextMenu({ id: period.id, x: Math.min(event.clientX, window.innerWidth - 190), y: Math.min(event.clientY, window.innerHeight - 70) })
+        }}>
           {cover
             ? <img src={`${API}/api/contents/${cover}/thumbnail`} alt="" loading="lazy" />
             : <span className="period-cover-empty">No title image</span>}
           <span className="period-card-info"><strong>{period.name}</strong><span>{formatDate(period.startDate)} – {formatDate(period.endDate)}</span><span>{period.contentIds.length} images</span></span>
         </button>
       })}
+    </div>}
+    {periodContextMenu && <div className="period-context-backdrop" onClick={() => setPeriodContextMenu(null)} onContextMenu={event => { event.preventDefault(); setPeriodContextMenu(null) }}>
+      <div className="period-context-menu" role="menu" style={{ left: periodContextMenu.x, top: periodContextMenu.y }} onClick={event => event.stopPropagation()}>
+        <button type="button" role="menuitem" onClick={() => void deletePeriod(periodContextMenu.id)}>Delete</button>
+      </div>
     </div>}
   </section>
 
@@ -377,18 +419,30 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
       <label>End date<input type="text" required inputMode="numeric" pattern="\d{2}\.\d{2}\.\d{4}" value={endDate} onChange={event => setEndDate(event.target.value)} onBlur={() => void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>)} /></label>
     </form>
     {!isNew && editing && (imageView === 'grid'
-      ? periodContents.length === 0 ? <p className="state">No images in this period yet. Add images to get started.</p> : <section className="content-grid period-image-grid" aria-label={`Images in ${editing.name}`}>
+      ? periodContents.length === 0 ? <p className="state">No images in this period yet. Add images to get started.</p> : <>
+        <div className="selection-toolbar">
+          <span className="selection-count" aria-live="polite">{selectedPeriodImageIds.length} selected</span>
+          <button className="button selection-actions-trigger" type="button" aria-label="Actions for selected period images" disabled={!selectedPeriodImageIds.length} onClick={event => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            setImageActionsMenu({ x: rect.right - 190, y: rect.bottom })
+          }}>•••</button>
+        </div>
+        <section className="content-grid period-image-grid" aria-label={`Images in ${editing.name}`}>
         {periodContents.map(item => <article className="content-card" key={item.id}>
-          <button className="content-preview-wrap" type="button" onClick={() => openSingle(item)} onContextMenu={event => openContextMenu(event, item.id)} aria-label={`Open content ${item.id.slice(0, 8)}; right-click for period image actions`}>
-            <img className="content-preview" src={`${API}/api/contents/${item.id}/thumbnail`} alt="Content" loading="lazy" />
-            {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">▶</span>}
-            {titleImageId === item.id && <span className="period-title-badge">Title</span>}
-          </button>
+          <div className="content-selection-preview" onContextMenu={event => openContextMenu(event, item.id)}>
+            <button className="content-preview-wrap" type="button" onClick={() => openSingle(item)} aria-label={`Open content ${item.id.slice(0, 8)}`}>
+              <img className="content-preview" src={`${API}/api/contents/${item.id}/thumbnail`} alt="Content" loading="lazy" />
+              {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">▶</span>}
+              {titleImageId === item.id && <span className="period-title-badge">Title</span>}
+            </button>
+            <label className="content-selection-control"><input type="checkbox" checked={selectedPeriodImageIds.includes(item.id)} onChange={() => setSelectedPeriodImageIds(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])} aria-label={`Select image ${item.id.slice(0, 8)}`} /></label>
+          </div>
           <div className="content-details">
             <div className="card-tags">{item.tags.map(tag => <span className="tag" key={tag}>{tag}</span>)}{item.autoTags.map(tag => <span className="tag tag-auto" key={tag}>{tag}</span>)}</div>
           </div>
         </article>)}
-      </section>
+        </section>
+      </>
       : currentContent ? <section className="single-content period-single-content" aria-label="Period content single view">
         <header className="single-content-heading"><div className="single-content-title"><span>{periodContents.findIndex(item => item.id === currentContent.id) + 1} of {periodContents.length}</span></div></header>
         <div className="single-content-frame">
@@ -432,8 +486,12 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     </div>}
     {contextMenu && <div className="period-context-backdrop" onClick={() => setContextMenu(null)} onContextMenu={event => { event.preventDefault(); setContextMenu(null) }}>
       <div className="period-context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={event => event.stopPropagation()}>
-        <button type="button" role="menuitem" disabled={busy} onClick={() => void setTitleImage(contextMenu.id)}>Make Title Image</button>
         <button type="button" role="menuitem" disabled={busy} onClick={() => { const id = contextMenu.id; setContextMenu(null); void removeContent(id) }}>Remove</button>
+      </div>
+    </div>}
+    {imageActionsMenu && <div className="period-context-backdrop" onClick={() => setImageActionsMenu(null)} onContextMenu={event => { event.preventDefault(); setImageActionsMenu(null) }}>
+      <div className="period-context-menu" role="menu" style={{ left: imageActionsMenu.x, top: imageActionsMenu.y }} onClick={event => event.stopPropagation()}>
+        <button type="button" role="menuitem" disabled={busy} onClick={() => void removeSelectedPeriodImages()}>Remove</button>
       </div>
     </div>}
   </section>

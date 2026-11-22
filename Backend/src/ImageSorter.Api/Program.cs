@@ -43,6 +43,7 @@ try
     builder.Services.AddScoped<PeriodService>();
     builder.Services.AddScoped<DuplicateContentService>();
     builder.Services.AddHostedService<DuplicateContentWorker>();
+    builder.Services.AddHostedService<DeletedContentWorker>();
     builder.Services.AddControllers();
     var allowedOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:5173"];
     builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
@@ -86,7 +87,24 @@ try
     app.UseCors();
     await using (var scope = app.Services.CreateAsyncScope())
     {
-        await scope.ServiceProvider.GetRequiredService<ContentDbContext>().Database.EnsureCreatedAsync();
+        var db = scope.ServiceProvider.GetRequiredService<ContentDbContext>();
+        await db.Database.EnsureCreatedAsync();
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS deleted_contents (
+                id uuid PRIMARY KEY,
+                content_type varchar(100) NOT NULL,
+                added_at timestamp with time zone NOT NULL,
+                taken_at date NULL,
+                dirty boolean NOT NULL,
+                description text NOT NULL,
+                deleted_at timestamp with time zone NOT NULL,
+                tags_json jsonb NOT NULL,
+                period_links_json jsonb NOT NULL,
+                title_period_ids_json jsonb NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_deleted_contents_deleted_at
+                ON deleted_contents (deleted_at);
+            """);
     }
 
     app.MapGet("/api/health", async (ContentDbContext db, CancellationToken ct) =>

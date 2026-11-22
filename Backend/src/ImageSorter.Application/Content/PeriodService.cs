@@ -8,12 +8,12 @@ public sealed record PeriodDto(Guid Id, string Name, DateOnly StartDate, DateOnl
 public sealed class PeriodService(IPeriodCatalog catalog)
 {
     public async Task<IReadOnlyList<PeriodDto>> ListAsync(CancellationToken ct) =>
-        await Task.WhenAll((await catalog.ListPeriodsAsync(ct)).Select(ToDtoAsync));
+        (await catalog.ListPeriodsAsync(ct)).Select(ToDto).ToArray();
 
     public async Task<PeriodDto?> GetAsync(Guid id, CancellationToken ct)
     {
         var period = await catalog.GetPeriodAsync(id, ct);
-        return period is null ? null : await ToDtoAsync(period);
+        return period is null ? null : ToDto(period);
     }
 
     public async Task<IReadOnlyList<ContentDto>?> GetContentsAsync(Guid id, CancellationToken ct)
@@ -35,7 +35,7 @@ public sealed class PeriodService(IPeriodCatalog catalog)
         ValidateDates(startDate, endDate);
         var period = new Period(Guid.NewGuid(), normalizedName, startDate, endDate);
         await catalog.CreatePeriodAsync(period, contentIds ?? [], ct);
-        return await ToDtoAsync((await catalog.GetPeriodAsync(period.Id, ct))!);
+        return ToDto((await catalog.GetPeriodAsync(period.Id, ct))!);
     }
 
     public async Task<bool> UpdateAsync(Guid id, string name, DateOnly startDate, DateOnly endDate, Guid? titleImageId, CancellationToken ct)
@@ -55,20 +55,15 @@ public sealed class PeriodService(IPeriodCatalog catalog)
             ct);
 
     public Task<bool> RemoveContentAsync(Guid id, Guid contentId, CancellationToken ct) => catalog.RemovePeriodContentAsync(id, contentId, ct);
+    public Task<bool> DeleteAsync(Guid id, CancellationToken ct) => catalog.DeletePeriodAsync(id, ct);
 
-    private async Task<PeriodDto> ToDtoAsync(Period period)
-    {
-        var contentIds = new List<Guid>();
-        foreach (var link in period.Contents) contentIds.Add(link.ContentId);
-        var titleImageId = period.TitleImageId;
-        return new PeriodDto(
+    private static PeriodDto ToDto(Period period) => new(
         period.Id,
         period.Name,
         period.StartDate,
         period.EndDate,
-        titleImageId,
-        contentIds.Order().ToArray());
-    }
+        period.TitleImageId,
+        period.Contents.Select(link => link.ContentId).Order().ToArray());
 
     private static string NormalizeName(string value)
     {

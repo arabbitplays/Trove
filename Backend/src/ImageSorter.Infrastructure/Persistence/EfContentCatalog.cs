@@ -41,6 +41,7 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
             .Where(link => targetTags.Add(link.TagName))
             .Select(link => new ContentTag(target.Id, link.TagName)));
         target.MergeDescription(source.Description);
+        target.MergeTakenAt(source);
         db.Contents.Remove(source);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -142,6 +143,14 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
         await db.SaveChangesAsync(ct);
         return true;
     }
+    public async Task<bool> DeletePeriodAsync(Guid id, CancellationToken ct)
+    {
+        var period = await db.Periods.SingleOrDefaultAsync(item => item.Id == id, ct);
+        if (period is null) return false;
+        db.Periods.Remove(period);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
     public async Task<IReadOnlyList<string>> GetTagsAsync(CancellationToken ct) => await db.Tags.AsNoTracking().Where(tag => !tag.IsAuto).OrderBy(tag => tag.Name).Select(tag => tag.Name).ToListAsync(ct);
     public async Task<IReadOnlyList<string>> GetAutoTagsAsync(CancellationToken ct) => await db.Tags.AsNoTracking().Where(tag => tag.IsAuto).OrderBy(tag => tag.Name).Select(tag => tag.Name).ToListAsync(ct);
     public async Task SetTagAsync(Guid id, string tag, CancellationToken ct)
@@ -207,6 +216,61 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
         }
         await db.SaveChangesAsync(ct);
         return true;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct)
+    {
+        var content = await db.Contents.Include(item => item.ContentTags).ThenInclude(link => link.Tag)
+            .SingleOrDefaultAsync(item => item.Id == id, ct);
+        if (content is null) return false;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var periodLinks = await db.PeriodContents.Where(link => link.ContentId == id).ToListAsync(ct);
+        var titlePeriods = await db.Periods.Where(period => period.TitleImageId == id).ToListAsync(ct);
+        var titlePeriodIds = titlePeriods.Select(period => period.Id).ToArray();
+        db.DeletedContents.Add(new DeletedContentRecord(content, DateTimeOffset.UtcNow,
+            System.Text.Json.JsonSerializer.Serialize(content.ContentTags.Select(link => new DeletedTagSnapshot(link.TagName, link.Tag?.IsAuto ?? false)).ToArray()),
+            System.Text.Json.JsonSerializer.Serialize(periodLinks.Select(link => link.PeriodId).ToArray()),
+            System.Text.Json.JsonSerializer.Serialize(titlePeriodIds)));
+        db.PeriodContents.RemoveRange(periodLinks);
+        foreach (var period in titlePeriods) period.SetTitleImage(null);
+        db.Contents.Remove(content);
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> RestoreAsync(Guid id, CancellationToken ct)
+    {
+        var deleted = await db.DeletedContents.SingleOrDefaultAsync(item => item.Id == id, ct);
+        if (deleted is null) return false;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var content = new ContentRecord(deleted.Id, deleted.ContentType, deleted.AddedAt, deleted.TakenAt, deleted.Description, deleted.Dirty);
+        db.Contents.Add(content);
+        foreach (var tagSnapshot in System.Text.Json.JsonSerializer.Deserialize<DeletedTagSnapshot[]>(deleted.TagsJson) ?? [])
+        {
+            var tag = await db.Tags.SingleOrDefaultAsync(item => item.Name == tagSnapshot.Name, ct);
+            if (tag is null) db.Tags.Add(new Tag(tagSnapshot.Name, tagSnapshot.IsAuto));
+            else if (tagSnapshot.IsAuto) tag.MarkAuto();
+            db.ContentTags.Add(new ContentTag(id, tagSnapshot.Name));
+        }
+        var periodIds = System.Text.Json.JsonSerializer.Deserialize<Guid[]>(deleted.PeriodLinksJson) ?? [];
+        var existingPeriodIds = await db.Periods.Where(period => periodIds.Contains(period.Id)).Select(period => period.Id).ToArrayAsync(ct);
+        db.PeriodContents.AddRange(existingPeriodIds.Select(periodId => new PeriodContent(periodId, id)));
+        var titlePeriodIds = System.Text.Json.JsonSerializer.Deserialize<Guid[]>(deleted.TitlePeriodIdsJson) ?? [];
+        var periods = await db.Periods.Where(period => titlePeriodIds.Contains(period.Id)).ToListAsync(ct);
+        foreach (var period in periods) period.SetTitleImage(id);
+        db.DeletedContents.Remove(deleted);
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return true;
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetExpiredDeletedContentAsync(DateTimeOffset cutoff, CancellationToken ct) =>
+        await db.DeletedContents.Where(item => item.DeletedAt <= cutoff).Select(item => item.Id).ToListAsync(ct);
+
+    public async Task PurgeDeletedContentAsync(Guid id, CancellationToken ct)
+    {
+        await db.DeletedContents.Where(item => item.Id == id).ExecuteDeleteAsync(ct);
     }
 
     public async Task ApplyImportTagsAsync(IReadOnlyList<Guid> contentIds, IReadOnlyList<string> tags, string newTag, CancellationToken ct)

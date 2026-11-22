@@ -73,6 +73,14 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
 
     public Task<string?> FindContentPathAsync(Guid id, CancellationToken ct) => storage.FindPathAsync(id, ct);
 
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct)
+    {
+        if (!await catalog.DeleteAsync(id, ct)) return false;
+        return true;
+    }
+
+    public Task<bool> RestoreAsync(Guid id, CancellationToken ct) => catalog.RestoreAsync(id, ct);
+
     public async Task SetMetadataAsync(Guid id, string? description, DateOnly? takenAt, CancellationToken ct)
     {
         if (description?.Length > 5000) throw new ArgumentException("Descriptions cannot exceed 5000 characters.");

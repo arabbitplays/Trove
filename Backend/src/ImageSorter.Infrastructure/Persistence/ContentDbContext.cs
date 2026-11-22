@@ -6,6 +6,7 @@ namespace ImageSorter.Infrastructure.Persistence;
 public sealed class ContentDbContext(DbContextOptions<ContentDbContext> options) : DbContext(options)
 {
     public DbSet<ContentRecord> Contents => Set<ContentRecord>();
+    public DbSet<DeletedContentRecord> DeletedContents => Set<DeletedContentRecord>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ContentTag> ContentTags => Set<ContentTag>();
     public DbSet<Period> Periods => Set<Period>();
@@ -25,6 +26,22 @@ public sealed class ContentDbContext(DbContextOptions<ContentDbContext> options)
             entity.Property(content => content.Dirty).HasColumnName("dirty").HasDefaultValue(true).IsRequired();
             entity.HasIndex(content => content.AddedAt);
             entity.HasIndex(content => content.Dirty);
+        });
+        modelBuilder.Entity<DeletedContentRecord>(entity =>
+        {
+            entity.ToTable("deleted_contents");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasColumnName("id").HasColumnType("uuid");
+            entity.Property(item => item.ContentType).HasColumnName("content_type").HasMaxLength(100).IsRequired();
+            entity.Property(item => item.AddedAt).HasColumnName("added_at").HasColumnType("timestamp with time zone").IsRequired();
+            entity.Property(item => item.TakenAt).HasColumnName("taken_at").HasColumnType("date");
+            entity.Property(item => item.Dirty).HasColumnName("dirty").IsRequired();
+            entity.Property(item => item.Description).HasColumnName("description").HasColumnType("text").IsRequired();
+            entity.Property(item => item.DeletedAt).HasColumnName("deleted_at").HasColumnType("timestamp with time zone").IsRequired();
+            entity.Property(item => item.TagsJson).HasColumnName("tags_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(item => item.PeriodLinksJson).HasColumnName("period_links_json").HasColumnType("jsonb").IsRequired();
+            entity.Property(item => item.TitlePeriodIdsJson).HasColumnName("title_period_ids_json").HasColumnType("jsonb").IsRequired();
+            entity.HasIndex(item => item.DeletedAt);
         });
         modelBuilder.Entity<Tag>(entity =>
         {
