@@ -125,7 +125,10 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
         }
 
         var current = period.Contents.Select(link => link.ContentHash).ToHashSet(StringComparer.Ordinal);
-        db.PeriodContents.AddRange(selected.Where(hash => current.Add(hash)).Select(hash => new PeriodContent(id, hash)));
+        var added = selected.Where(hash => current.Add(hash)).ToArray();
+        db.PeriodContents.AddRange(added.Select(hash => new PeriodContent(id, hash)));
+        var contentsToDate = await db.Contents.Where(content => added.Contains(content.Hash) && content.TakenAt == null).ToListAsync(ct);
+        foreach (var content in contentsToDate) content.UpdateTakenAt(period.StartDate);
         await db.SaveChangesAsync(ct);
         return true;
     }
@@ -139,15 +142,20 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
         await db.SaveChangesAsync(ct);
         return true;
     }
-    public async Task<IReadOnlyList<string>> GetTagsAsync(CancellationToken ct) => await db.Tags.AsNoTracking().OrderBy(tag => tag.Name).Select(tag => tag.Name).ToListAsync(ct);
+    public async Task<IReadOnlyList<string>> GetTagsAsync(CancellationToken ct) => await db.Tags.AsNoTracking().Where(tag => !tag.IsAuto).OrderBy(tag => tag.Name).Select(tag => tag.Name).ToListAsync(ct);
+    public async Task<IReadOnlyList<string>> GetAutoTagsAsync(CancellationToken ct) => await db.Tags.AsNoTracking().Where(tag => tag.IsAuto).OrderBy(tag => tag.Name).Select(tag => tag.Name).ToListAsync(ct);
     public async Task SetTagAsync(string hash, string tag, CancellationToken ct)
     {
-        if (!await db.Tags.AnyAsync(item => item.Name == tag, ct)) db.Tags.Add(new Tag(tag));
+        var existingTag = await db.Tags.SingleOrDefaultAsync(item => item.Name == tag, ct);
+        if (existingTag?.IsAuto == true) throw new ArgumentException($"The tag '{tag}' is assigned automatically.");
+        if (existingTag is null) db.Tags.Add(new Tag(tag));
         if (!await db.ContentTags.AnyAsync(link => link.ContentHash == hash && link.TagName == tag, ct)) db.ContentTags.Add(new ContentTag(hash, tag));
         await db.SaveChangesAsync(ct);
     }
     public async Task RemoveTagAsync(string hash, string tag, CancellationToken ct)
     {
+        if (await db.Tags.AnyAsync(item => item.Name == tag && item.IsAuto, ct))
+            throw new ArgumentException($"The tag '{tag}' is assigned automatically.");
         var link = await db.ContentTags.FindAsync([hash, tag], ct);
         if (link is null) return;
         db.ContentTags.Remove(link);
@@ -159,11 +167,43 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
         }
     }
 
-    public async Task<bool> SetDescriptionAsync(string hash, string description, CancellationToken ct)
+    public async Task<bool> SetMetadataAsync(string hash, string? description, DateOnly? takenAt, CancellationToken ct)
     {
         var content = await db.Contents.SingleOrDefaultAsync(item => item.Hash == hash, ct);
         if (content is null) return false;
-        content.UpdateDescription(description);
+        if (description is not null) content.UpdateDescription(description);
+        var oldYearTag = content.TakenAt?.Year.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var newYearTag = takenAt?.Year.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        content.UpdateTakenAt(takenAt);
+        if (oldYearTag != newYearTag || (takenAt is null && oldYearTag is null))
+        {
+            if (oldYearTag is not null)
+            {
+                var oldLink = await db.ContentTags.FindAsync([hash, oldYearTag], ct);
+                if (oldLink is not null) db.ContentTags.Remove(oldLink);
+            }
+            if (newYearTag is not null)
+            {
+                var yearTag = await db.Tags.FindAsync([newYearTag], ct);
+                if (yearTag is null) db.Tags.Add(new Tag(newYearTag, true));
+                else yearTag.MarkAuto();
+                if (!await db.ContentTags.AnyAsync(link => link.ContentHash == hash && link.TagName == newYearTag, ct))
+                    db.ContentTags.Add(new ContentTag(hash, newYearTag));
+            }
+            var noDateTag = await db.Tags.FindAsync(["no date"], ct);
+            if (takenAt is null)
+            {
+                if (noDateTag is null) db.Tags.Add(new Tag("no date", true));
+                else noDateTag.MarkAuto();
+                if (!await db.ContentTags.AnyAsync(link => link.ContentHash == hash && link.TagName == "no date", ct))
+                    db.ContentTags.Add(new ContentTag(hash, "no date"));
+            }
+            else if (noDateTag is not null)
+            {
+                var noDateLink = await db.ContentTags.FindAsync([hash, "no date"], ct);
+                if (noDateLink is not null) db.ContentTags.Remove(noDateLink);
+            }
+        }
         await db.SaveChangesAsync(ct);
         return true;
     }
@@ -178,9 +218,10 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
         var tagNames = tags.Append(newTag).Distinct().ToArray();
         if (hashes.Length > 0)
         {
-            var existingTagNames = await db.Tags.Where(tag => tagNames.Contains(tag.Name)).Select(tag => tag.Name).ToArrayAsync(ct);
-            var existingTagSet = existingTagNames.ToHashSet(StringComparer.Ordinal);
-            db.Tags.AddRange(tagNames.Where(tag => !existingTagSet.Contains(tag)).Select(tag => new Tag(tag)));
+            var existingTags = await db.Tags.Where(tag => tagNames.Contains(tag.Name)).ToListAsync(ct);
+            var existingTagSet = existingTags.Select(tag => tag.Name).ToHashSet(StringComparer.Ordinal);
+            db.Tags.AddRange(tagNames.Where(tag => !existingTagSet.Contains(tag)).Select(tag => new Tag(tag, tag == newTag)));
+            existingTags.Where(tag => tag.Name == newTag).ToList().ForEach(tag => tag.MarkAuto());
 
             var existingLinks = await db.ContentTags
                 .Where(link => hashes.Contains(link.ContentHash) && tagNames.Contains(link.TagName))

@@ -6,13 +6,15 @@ import PeriodsView from './PeriodsView'
 import ContentMetadataEditor from './ContentMetadataEditor'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
-type ContentItem = { hash: string; originalName: string; addedAt: string; tags: string[]; mediaType: string; description: string }
+type ContentItem = { hash: string; addedAt: string; takenAt: string | null; tags: string[]; autoTags: string[]; mediaType: string; description: string }
 type Page = { items: ContentItem[]; total: number; skip: number; take: number }
 type ContentSelectionState = { mode: 'some'; hashes: string[] } | { mode: 'all'; excludedHashes: string[] }
 
 export default function App() {
   const [page, setPage] = useState<Page>({ items: [], total: 0, skip: 0, take: 48 })
   const [allTags, setAllTags] = useState<string[]>([])
+  const [autoTagNames, setAutoTagNames] = useState<string[]>([])
+  const [tagsLoaded, setTagsLoaded] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const [contentSelection, setContentSelection] = useState<ContentSelectionState>({ mode: 'some', hashes: [] })
@@ -57,11 +59,13 @@ export default function App() {
       ])
       if (!contentsResponse.ok || !tagsResponse.ok) throw new Error('Request failed')
       const nextPage = await contentsResponse.json() as Page
-      const tagResult = await tagsResponse.json() as { tags: string[]; availableTags: string[] }
+      const tagResult = await tagsResponse.json() as { tags: string[]; autoTags: string[]; availableTags: string[] }
       pageRef.current = nextPage
       setPage(nextPage)
       setAllTags(tagResult.tags)
+      setAutoTagNames(tagResult.autoTags)
       setAvailableTags(tagResult.availableTags)
+      setTagsLoaded(true)
     } catch {
       setApiAvailable(false)
     } finally {
@@ -78,6 +82,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('content-tag-shortcuts', JSON.stringify(tagShortcuts))
   }, [tagShortcuts])
+
+  useEffect(() => {
+    if (!tagsLoaded) return
+    setTagShortcuts(current => Object.fromEntries(Object.entries(current).filter(([, tag]) => !tag || allTags.includes(tag))))
+  }, [allTags, tagsLoaded])
 
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
@@ -140,6 +149,7 @@ export default function App() {
   }
 
   async function updateTag(hash: string, tag: string, remove = false): Promise<boolean> {
+    if (!remove && autoTagNames.includes(tag.trim().toLowerCase())) return false
     const previousPage = pageRef.current
     const previousTags = previousPage.items.find(item => item.hash === hash)?.tags
     const tagWasPresent = previousTags?.includes(tag) ?? false
@@ -197,22 +207,22 @@ export default function App() {
     return true
   }
 
-  async function saveDescription(hash: string, description: string) {
+  async function saveMetadata(hash: string, description: string, takenAt: string | null): Promise<boolean> {
     const current = pageRef.current.items.find(item => item.hash === hash)
-    if (!current) return
-    if (description === current.description) return
-    const response = await fetch(`${API}/api/contents/${hash}/description`, {
+    if (!current) return false
+    if (description === current.description && takenAt === current.takenAt) return true
+    const response = await fetch(`${API}/api/contents/${hash}/metadata`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description }),
+      body: JSON.stringify({ description, takenAt }),
     })
     if (!response.ok) {
-      setNotice('Could not save the description.')
-      return
+      setNotice('Could not save the content metadata.')
+      return false
     }
     const updatedPage = {
       ...pageRef.current,
-      items: pageRef.current.items.map(item => item.hash === hash ? { ...item, description } : item),
+      items: pageRef.current.items.map(item => item.hash === hash ? { ...item, description, takenAt } : item),
     }
     pageRef.current = updatedPage
     setPage(updatedPage)
@@ -222,6 +232,7 @@ export default function App() {
       delete next[hash]
       return next
     })
+    return true
   }
 
   const visible = page.items
@@ -464,6 +475,7 @@ export default function App() {
               onClick={() => void updateTag(item.hash, tag, true)}
               title={`Remove ${tag}`}
             >{tag}<span aria-hidden="true"> ×</span></button>)}
+            {item.autoTags.map(tag => <span key={tag} className="tag tag-auto" title="Assigned automatically">{tag}</span>)}
             <form onSubmit={event => {
               event.preventDefault()
               const tag = tagDrafts[item.hash]?.trim()
@@ -471,10 +483,13 @@ export default function App() {
             }}>
               <input
                 className="tag-input"
-                aria-label={`Add tag to ${item.originalName}`}
+                aria-label="Add tag to content"
                 placeholder="Add tag"
                 value={tagDrafts[item.hash] ?? ''}
                 onChange={event => setTagDrafts(state => ({ ...state, [item.hash]: event.target.value }))}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' && autoTagNames.includes(event.currentTarget.value.trim().toLowerCase())) event.preventDefault()
+                }}
               />
             </form>
           </div>
@@ -489,14 +504,15 @@ export default function App() {
       <div className="single-content-frame">
         {selectedContent.mediaType.startsWith('video/')
           ? <video className="full-content" src={`${API}/api/contents/${selectedContent.hash}/content`} controls preload="metadata" />
-          : <img className="full-content" src={`${API}/api/contents/${selectedContent.hash}/content`} alt={selectedContent.originalName} />}
+          : <img className="full-content" src={`${API}/api/contents/${selectedContent.hash}/content`} alt="Selected content" />}
       </div>
       <ContentMetadataEditor
         content={selectedContent}
         allTags={allTags}
+        autoTagNames={autoTagNames}
         description={descriptionDrafts[selectedContent.hash] ?? selectedContent.description}
         onDescriptionChange={value => setDescriptionDrafts(state => ({ ...state, [selectedContent.hash]: value }))}
-        onSaveDescription={saveDescription}
+        onSaveMetadata={saveMetadata}
         tagShortcuts={tagShortcuts}
         onShortcutChange={(number, tag) => setTagShortcuts(current => ({ ...current, [number]: tag }))}
         onApplyShortcut={(hash, tag) => { void updateTag(hash, tag) }}
@@ -512,6 +528,7 @@ export default function App() {
       onClearTags={() => setSelectedTags([])}
       availableTags={availableTags}
       allTags={allTags}
+      autoTagNames={autoTagNames}
       endRef={gridEndRef}
       loadNextBatch={loadNextBatch}
       onTagsChanged={refresh}

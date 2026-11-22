@@ -14,9 +14,10 @@ public interface IContentCatalog
     Task<int> CountAsync(IReadOnlyList<string> tags, CancellationToken cancellationToken);
     Task<IReadOnlyList<string>> GetTagsForContentMatchingAsync(IReadOnlyList<string> tags, CancellationToken cancellationToken);
     Task<IReadOnlyList<string>> GetTagsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<string>> GetAutoTagsAsync(CancellationToken cancellationToken);
     Task SetTagAsync(string hash, string tag, CancellationToken cancellationToken);
     Task RemoveTagAsync(string hash, string tag, CancellationToken cancellationToken);
-    Task<bool> SetDescriptionAsync(string hash, string description, CancellationToken cancellationToken);
+    Task<bool> SetMetadataAsync(string hash, string? description, DateOnly? takenAt, CancellationToken cancellationToken);
     Task ApplyImportTagsAsync(IReadOnlyList<string> contentHashes, IReadOnlyList<string> tags, string newTag, CancellationToken cancellationToken);
 }
 

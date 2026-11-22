@@ -7,7 +7,7 @@ namespace ImageSorter.Api.Controllers;
 [Route("api")]
 public sealed class ContentController(ContentService service) : ControllerBase
 {
-    public sealed record DescriptionRequest(string Description);
+    public sealed record MetadataRequest(string? Description, DateOnly? TakenAt);
 
     [HttpGet("contents")]
     public async Task<IActionResult> List([FromQuery] string[]? tag, [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct) =>
@@ -48,12 +48,12 @@ public sealed class ContentController(ContentService service) : ControllerBase
         return PhysicalFile(path, contentType, enableRangeProcessing: true);
     }
 
-    [HttpPut("contents/{hash}/description")]
-    public async Task<IActionResult> SetDescription(string hash, [FromBody] DescriptionRequest request, CancellationToken ct)
+    [HttpPut("contents/{hash}/metadata")]
+    public async Task<IActionResult> SetMetadata(string hash, [FromBody] MetadataRequest request, CancellationToken ct)
     {
         try
         {
-            await service.SetDescriptionAsync(hash, request.Description, ct);
+            await service.SetMetadataAsync(hash, request.Description, request.TakenAt, ct);
             return NoContent();
         }
         catch (ArgumentException error)

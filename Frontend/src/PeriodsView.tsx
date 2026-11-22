@@ -12,12 +12,12 @@ type PeriodRecord = {
   titleImageHash: string | null
   contentHashes: string[]
 }
-type ContentItem = SelectableContent & { addedAt: string; description: string }
+type ContentItem = SelectableContent
 type Selection = { mode: 'some'; hashes: string[] } | { mode: 'all'; excludedHashes: string[] }
 type ContextMenu = { hash: string; x: number; y: number }
 
 function formatDate(value: string) {
-  const [year, month, day] = value.split('-')
+  const [year, month, day] = value.slice(0, 10).split('-')
   return `${day}.${month}.${year}`
 }
 
@@ -38,6 +38,7 @@ type Props = {
   onClearTags: () => void
   availableTags: string[]
   allTags: string[]
+  autoTagNames: string[]
   endRef: RefObject<HTMLDivElement>
   loadNextBatch: () => Promise<ContentItem[]>
   onTagsChanged: () => Promise<void>
@@ -45,7 +46,7 @@ type Props = {
   onShortcutChange: (number: string, tag: string) => void
 }
 
-export default function PeriodsView({ contents, totalContents, selectedTags, onToggleTag, onClearTags, availableTags, allTags, endRef, loadNextBatch, onTagsChanged, tagShortcuts, onShortcutChange }: Props) {
+export default function PeriodsView({ contents, totalContents, selectedTags, onToggleTag, onClearTags, availableTags, allTags, autoTagNames, endRef, loadNextBatch, onTagsChanged, tagShortcuts, onShortcutChange }: Props) {
   const [periods, setPeriods] = useState<PeriodRecord[]>([])
   const [editing, setEditing] = useState<PeriodRecord | null>(null)
   const [isNew, setIsNew] = useState(false)
@@ -135,6 +136,17 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     const next = periodContents[index + direction]
     if (next) openSingle(next)
   }
+
+  useEffect(() => {
+    if (imageView !== 'single') return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return
+      if (event.key === 'ArrowLeft') { event.preventDefault(); movePeriodSelection(-1) }
+      if (event.key === 'ArrowRight') { event.preventDefault(); movePeriodSelection(1) }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [imageView, currentContentHash, periodContents])
 
   function openContextMenu(event: MouseEvent, hash: string) {
     event.preventDefault()
@@ -279,23 +291,25 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
     }
   }
 
-  async function saveDescription(hash: string, description: string) {
+  async function saveMetadata(hash: string, description: string, takenAt: string | null): Promise<boolean> {
     const item = periodContents.find(content => content.hash === hash)
-    if (!item || item.description === description) return
-    const response = await fetch(`${API}/api/contents/${hash}/description`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description }),
+    if (!item || (item.description === description && item.takenAt === takenAt)) return true
+    const response = await fetch(`${API}/api/contents/${hash}/metadata`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description, takenAt }),
     })
     if (!response.ok) {
-      setError('Could not save the description.')
-      return
+      setError('Could not save the content metadata.')
+      return false
     }
-    setPeriodContents(current => current.map(content => content.hash === hash ? { ...content, description } : content))
+    setPeriodContents(current => current.map(content => content.hash === hash ? { ...content, description, takenAt } : content))
     setDescriptionDraft(null)
+    return true
   }
 
   async function changeTag(hash: string, tagValue: string, remove = false): Promise<boolean> {
     const tag = tagValue.trim()
     if (!tag) return false
+    if (!remove && autoTagNames.includes(tag.toLowerCase())) return false
     const response = await fetch(`${API}/api/tags/${encodeURIComponent(tag)}`, {
       method: remove ? 'DELETE' : 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -349,7 +363,7 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
         {!isNew && editing && <span className="period-detail-dates">{formatDate(editing.startDate)} – {formatDate(editing.endDate)}</span>}
       </div>
       {!isNew && <div className="period-view-actions">
-        {imageView === 'grid' ? <button className="button button-primary" type="button" onClick={() => { setSelection({ mode: 'some', hashes: [] }); setAddPopupOpen(true) }}>Add images</button> : <button className="button" type="button" onClick={() => setImageView('grid')}>Back to grid</button>}
+        <button className="button button-primary" type="button" onClick={() => { setSelection({ mode: 'some', hashes: [] }); setAddPopupOpen(true) }}>Add images</button>
         <div className="view-toggle" role="group" aria-label="Period image view">
           <button className={`button ${imageView === 'grid' ? 'button-primary' : ''}`} type="button" onClick={() => setImageView('grid')} aria-pressed={imageView === 'grid'}>Grid</button>
           <button className={`button ${imageView === 'single' ? 'button-primary' : ''}`} type="button" onClick={() => { if (periodContents.length) openSingle(currentContent ?? periodContents[0]) }} disabled={!periodContents.length} aria-pressed={imageView === 'single'}>Single</button>
@@ -357,40 +371,38 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
       </div>}
     </div>
     {error && <p className="period-error" role="alert">{error}</p>}
-    <form className="period-form" onSubmit={event => void savePeriod(event)}>
-      <label>Period name<input className="tag-input" required maxLength={200} value={name} onChange={event => setName(event.target.value)} /></label>
-      <label>Start date<input type="text" required inputMode="numeric" pattern="\d{2}\.\d{2}\.\d{4}" value={startDate} onChange={event => setStartDate(event.target.value)} /></label>
-      <label>End date<input type="text" required inputMode="numeric" pattern="\d{2}\.\d{2}\.\d{4}" value={endDate} onChange={event => setEndDate(event.target.value)} /></label>
-      <div className="period-form-actions"><button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Saving…' : isNew ? 'Create period' : 'Save changes'}</button></div>
+    <form className="period-form" onSubmit={event => event.preventDefault()}>
+      <label>Period name<input className="tag-input" required maxLength={200} value={name} onChange={event => setName(event.target.value)} onBlur={event => { setName(event.target.value); void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>) }} /></label>
+      <label>Start date<input type="text" required inputMode="numeric" pattern="\d{2}\.\d{2}\.\d{4}" value={startDate} onChange={event => setStartDate(event.target.value)} onBlur={() => void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>)} /></label>
+      <label>End date<input type="text" required inputMode="numeric" pattern="\d{2}\.\d{2}\.\d{4}" value={endDate} onChange={event => setEndDate(event.target.value)} onBlur={() => void savePeriod(new Event('submit') as unknown as FormEvent<HTMLFormElement>)} /></label>
     </form>
     {!isNew && editing && (imageView === 'grid'
       ? periodContents.length === 0 ? <p className="state">No images in this period yet. Add images to get started.</p> : <section className="content-grid period-image-grid" aria-label={`Images in ${editing.name}`}>
         {periodContents.map(item => <article className="content-card" key={item.hash}>
-          <button className="content-preview-wrap" type="button" onClick={() => openSingle(item)} onContextMenu={event => openContextMenu(event, item.hash)} aria-label={`Open ${item.originalName}; right-click for period image actions`}>
-            <img className="content-preview" src={`${API}/api/contents/${item.hash}/thumbnail`} alt={item.originalName} loading="lazy" />
+          <button className="content-preview-wrap" type="button" onClick={() => openSingle(item)} onContextMenu={event => openContextMenu(event, item.hash)} aria-label={`Open content ${item.hash.slice(0, 8)}; right-click for period image actions`}>
+            <img className="content-preview" src={`${API}/api/contents/${item.hash}/thumbnail`} alt="Content" loading="lazy" />
             {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">▶</span>}
             {titleImageHash === item.hash && <span className="period-title-badge">Title</span>}
           </button>
-          <div className="content-details"><span className="period-content-name">{item.originalName}</span></div>
+          <div className="content-details">
+            <div className="card-tags">{item.tags.map(tag => <span className="tag" key={tag}>{tag}</span>)}{item.autoTags.map(tag => <span className="tag tag-auto" key={tag}>{tag}</span>)}</div>
+          </div>
         </article>)}
       </section>
       : currentContent ? <section className="single-content period-single-content" aria-label="Period content single view">
-        <header className="single-content-heading period-single-heading">
-          <button className="button" type="button" onClick={() => movePeriodSelection(-1)} disabled={periodContents[0]?.hash === currentContent.hash}>Previous</button>
-          <div className="single-content-title"><strong>{currentContent.originalName}</strong><span>{periodContents.findIndex(item => item.hash === currentContent.hash) + 1} of {periodContents.length}</span></div>
-          <button className="button" type="button" onClick={() => movePeriodSelection(1)} disabled={periodContents[periodContents.length - 1]?.hash === currentContent.hash}>Next</button>
-        </header>
+        <header className="single-content-heading"><div className="single-content-title"><span>{periodContents.findIndex(item => item.hash === currentContent.hash) + 1} of {periodContents.length}</span></div></header>
         <div className="single-content-frame">
           {currentContent.mediaType.startsWith('video/')
             ? <video className="full-content" src={`${API}/api/contents/${currentContent.hash}/content`} controls preload="metadata" />
-            : <img className="full-content" src={`${API}/api/contents/${currentContent.hash}/content`} alt={currentContent.originalName} />}
+            : <img className="full-content" src={`${API}/api/contents/${currentContent.hash}/content`} alt="Selected content" />}
         </div>
         <ContentMetadataEditor
           content={currentContent}
           allTags={allTags}
+          autoTagNames={autoTagNames}
           description={descriptionDraft ?? currentContent.description}
           onDescriptionChange={setDescriptionDraft}
-          onSaveDescription={saveDescription}
+          onSaveMetadata={saveMetadata}
           tagShortcuts={tagShortcuts}
           onShortcutChange={onShortcutChange}
           onApplyShortcut={(hash, tag) => { void changeTag(hash, tag) }}
@@ -412,7 +424,7 @@ export default function PeriodsView({ contents, totalContents, selectedTags, onT
           onToggleAll={toggleAll}
           onToggle={toggleContent}
           onOpen={item => toggleContent(item.hash)}
-          renderDetails={item => <div className="content-details"><span>{item.originalName}</span></div>}
+          renderDetails={item => <div className="content-details">{[...item.tags, ...item.autoTags].map(tag => <span key={tag} className={`tag ${item.autoTags.includes(tag) ? 'tag-auto' : ''}`}>{tag}</span>)}</div>}
           endRef={endRef}
         />
         <div className="period-add-actions"><span>{selectedCount.toLocaleString()} selected</span><button className="button button-primary" type="button" onClick={() => void addSelectedToPeriod()} disabled={busy || selectedCount === 0}>{busy ? 'Adding…' : 'Add selected to period'}</button></div>

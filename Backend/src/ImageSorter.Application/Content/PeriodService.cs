@@ -21,9 +21,10 @@ public sealed class PeriodService(IPeriodCatalog catalog)
         var contents = await catalog.GetPeriodContentsAsync(id, ct);
         return contents?.Select(content => new ContentDto(
             content.Hash,
-            content.OriginalName,
             content.AddedAt,
-            content.ContentTags.Select(link => link.TagName).OrderBy(tag => tag, StringComparer.Ordinal).ToArray(),
+            content.TakenAt,
+            content.ContentTags.Where(link => !link.Tag.IsAuto).Select(link => link.TagName).OrderBy(tag => tag, StringComparer.Ordinal).ToArray(),
+            content.ContentTags.Where(link => link.Tag.IsAuto).Select(link => link.TagName).OrderBy(tag => tag, StringComparer.Ordinal).ToArray(),
             content.ContentType,
             content.Description)).ToArray();
     }

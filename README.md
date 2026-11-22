@@ -1,6 +1,6 @@
 # Content Manager
 
-A local full-stack media library built with PostgreSQL, ASP.NET Core 8, and React with TypeScript. The backend stores original media files in `~/Resources/Images`, named by a lowercase random ID plus the original extension. PostgreSQL stores each ID, its first-added timestamp, filename, content type, and normalized tag assignments. The library is ordered newest first.
+A local full-stack media library built with PostgreSQL, ASP.NET Core 8, and React with TypeScript. The backend stores original media files in `~/Resources/Images`, named by a lowercase random ID plus the original extension. PostgreSQL stores each ID, the immutable added date, an optional capture date read from image metadata, content type, description, and normalized tags. Tags can be manually assigned or automatically assigned by the program.
 
 ## Requirements
 
@@ -33,7 +33,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>, choose **Import folder**, and select a folder. The browser uploads supported images and videos. The background worker merges pixel-identical images and videos separately; for videos it compares duration before decoding frames. The UI can search filenames and tags, filter by a tag, and add or remove per-file tags.
+Open <http://localhost:5173>, choose **Import folder**, and select a folder. The browser uploads supported images and videos. The background worker merges pixel-identical images and videos separately; for videos it compares duration before decoding frames. Capture dates are read from EXIF metadata when available. The UI can filter by tags and edit descriptions and manually assigned tags; automatic tags are read-only.
 
 ## Configuration
 
@@ -47,6 +47,6 @@ The default PostgreSQL connection is `Host=localhost;Port=5432;Database=imageman
 - `Backend/src/ImageSorter.Api`: HTTP endpoints and dependency configuration.
 - `Frontend`: React and TypeScript client.
 
-The database uses `contents`, `tags`, and `content_tags` tables. On startup, the API renames the legacy `images` and `image_tags` tables and their `ImageHash` column in place, preserving existing rows and tag assignments. The API also reconciles hash-named files already in the media directory into the catalog when listing the collection.
+The database uses `contents`, `tags`, `content_tags`, `periods`, and `period_contents` tables. EF Core creates the schema on startup when the database is empty. The API reconciles hash-named files already in the media directory into the catalog when listing the collection.
 
 Supported image extensions are JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, and HEIC. Supported video extensions are MP4, M4V, MOV, AVI, MKV, WebM, MPG, MPEG, and 3GP. HEIC images are converted to PNG; other files are stored without transcoding. FFmpeg and FFprobe must be available on `PATH` for video thumbnails and duplicate checks.

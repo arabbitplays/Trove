@@ -7,12 +7,13 @@ namespace ImageSorter.Api.Controllers;
 [Route("api")]
 public sealed class TagController(TagService service, ContentService contentService) : ControllerBase
 {
-    public sealed record TagListResponse(IReadOnlyList<string> Tags, IReadOnlyList<string> AvailableTags);
+    public sealed record TagListResponse(IReadOnlyList<string> Tags, IReadOnlyList<string> AutoTags, IReadOnlyList<string> AvailableTags);
 
     [HttpGet("tags")]
     public async Task<IActionResult> List([FromQuery] string[]? tag, CancellationToken ct) =>
         Ok(new TagListResponse(
             await service.ListAsync(ct),
+            await service.ListAutoAsync(ct),
             await contentService.GetAvailableTagsAsync(tag, ct)));
 
     [HttpPut("tags/{tag}")]
@@ -36,7 +37,14 @@ public sealed class TagController(TagService service, ContentService contentServ
     [HttpDelete("tags/{tag}")]
     public async Task<IActionResult> Remove(string tag, [FromBody] string[] hashes, CancellationToken ct)
     {
-        await service.RemoveAsync(hashes, tag, ct);
-        return NoContent();
+        try
+        {
+            await service.RemoveAsync(hashes, tag, ct);
+            return NoContent();
+        }
+        catch (ArgumentException error)
+        {
+            return BadRequest(new { error = error.Message });
+        }
     }
 }

@@ -3,9 +3,12 @@ import { Play } from 'lucide-react'
 
 export type SelectableContent = {
   hash: string
-  originalName: string
+  addedAt: string
+  takenAt: string | null
   tags: string[]
+  autoTags: string[]
   mediaType: string
+  description: string
 }
 
 type Props<T extends SelectableContent> = {
@@ -49,14 +52,14 @@ export default function ImageSelection<T extends SelectableContent>({
     <section className="content-grid" aria-label="Select media">
       {items.map(item => <article className={`content-card ${isSelected(item.hash) ? 'content-card-selected' : ''}`} key={item.hash}>
         <div className="content-selection-preview">
-          <button className="content-preview-wrap" type="button" onClick={() => onOpen(item)} aria-label={`Open ${item.originalName}`}>
-            <img className="content-preview" src={`${import.meta.env.VITE_API_URL ?? 'http://localhost:5000'}/api/contents/${item.hash}/thumbnail`} alt={item.originalName} loading="lazy" />
+          <button className="content-preview-wrap" type="button" onClick={() => onOpen(item)} aria-label={`Open content ${item.hash.slice(0, 8)}`}>
+            <img className="content-preview" src={`${import.meta.env.VITE_API_URL ?? 'http://localhost:5000'}/api/contents/${item.hash}/thumbnail`} alt="Content" loading="lazy" />
             {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">
               <Play size={16} fill="currentColor" aria-hidden="true" />
             </span>}
           </button>
           <label className="content-selection-control">
-            <input type="checkbox" checked={isSelected(item.hash)} onChange={() => onToggle(item.hash)} aria-label={`Select ${item.originalName}`} />
+            <input type="checkbox" checked={isSelected(item.hash)} onChange={() => onToggle(item.hash)} aria-label={`Select content ${item.hash.slice(0, 8)}`} />
           </label>
         </div>
         {renderDetails(item)}

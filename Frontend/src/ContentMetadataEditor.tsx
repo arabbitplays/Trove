@@ -2,17 +2,20 @@ import { useEffect, useState, type FormEvent } from 'react'
 
 export type EditableContent = {
   hash: string
-  originalName: string
+  addedAt: string
+  takenAt: string | null
   tags: string[]
+  autoTags: string[]
   description: string
 }
 
 type Props = {
   content: EditableContent
   allTags: string[]
+  autoTagNames: string[]
   description: string
   onDescriptionChange: (value: string) => void
-  onSaveDescription: (hash: string, value: string) => void
+  onSaveMetadata: (hash: string, description: string, takenAt: string | null) => Promise<boolean>
   tagShortcuts: Record<string, string>
   onShortcutChange: (number: string, tag: string) => void
   onApplyShortcut: (hash: string, tag: string) => void
@@ -20,12 +23,18 @@ type Props = {
   onRemoveTag: (hash: string, tag: string) => void
 }
 
+function formatDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split('-')
+  return `${day}.${month}.${year}`
+}
+
 export default function ContentMetadataEditor({
   content,
   allTags,
+  autoTagNames,
   description,
   onDescriptionChange,
-  onSaveDescription,
+  onSaveMetadata,
   tagShortcuts,
   onShortcutChange,
   onApplyShortcut,
@@ -33,12 +42,17 @@ export default function ContentMetadataEditor({
   onRemoveTag,
 }: Props) {
   const [tagDraft, setTagDraft] = useState('')
+  const [takenAtDraft, setTakenAtDraft] = useState(content.takenAt?.slice(0, 10) ?? '')
+  const [dateError, setDateError] = useState('')
 
   useEffect(() => setTagDraft(''), [content.hash])
+  useEffect(() => {
+    setTakenAtDraft(content.takenAt?.slice(0, 10) ?? '')
+  }, [content.hash, content.takenAt])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.target instanceof HTMLTextAreaElement && event.target.id === 'content-description') return
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLElement && event.target.isContentEditable) return
       const digit = /^[1-9]$/.test(event.key) ? event.key : /^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1]
       if (!digit) return
       const tag = tagShortcuts[digit]
@@ -55,7 +69,7 @@ export default function ContentMetadataEditor({
   async function addTag(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const tag = tagDraft.trim()
-    if (tag && await onAddTag(content.hash, tag)) setTagDraft('')
+    if (tag && !autoTagNames.includes(tag.toLowerCase()) && await onAddTag(content.hash, tag)) setTagDraft('')
   }
 
   return <>
@@ -68,7 +82,7 @@ export default function ContentMetadataEditor({
           maxLength={5000}
           value={description}
           onChange={event => onDescriptionChange(event.target.value)}
-          onBlur={event => onSaveDescription(content.hash, event.currentTarget.value)}
+          onBlur={event => { void onSaveMetadata(content.hash, event.currentTarget.value, content.takenAt) }}
         />
       </div>
       <section className="tag-shortcut-section" aria-label="Number key tag shortcuts">
@@ -89,17 +103,21 @@ export default function ContentMetadataEditor({
             </select>
           </label>)}
         </div>
-        <p>Press a number key to add its tag to this content.</p>
       </section>
     </section>
+    <div className="content-capture-date">
+      <label htmlFor="content-capture-date">Capture date</label>
+      <div className="content-capture-date-controls"><input id="content-capture-date" type="date" value={takenAtDraft} onChange={event => { setTakenAtDraft(event.target.value); setDateError(''); void onSaveMetadata(content.hash, description, event.target.value || null) }} /><button type="button" className="button" aria-label="Clear capture date" title="Clear capture date" disabled={!takenAtDraft} onClick={() => { setTakenAtDraft(''); setDateError(''); void onSaveMetadata(content.hash, description, null) }}>×</button></div>
+      {dateError && <span className="content-date-error" role="alert">{dateError}</span>}
+    </div>
     <div className="single-content-tags">
       {content.tags.map(tag => <button key={tag} className="tag" type="button" onClick={() => onRemoveTag(content.hash, tag)} title={`Remove ${tag}`}>
         {tag}<span aria-hidden="true"> ×</span>
       </button>)}
+      {content.autoTags.map(tag => <span key={tag} className="tag tag-auto" title="Assigned automatically">{tag}</span>)}
       <form onSubmit={event => void addTag(event)}>
-        <input className="tag-input" list="content-existing-tags" aria-label={`Add tag to ${content.originalName}`} placeholder="Add tag" value={tagDraft} onChange={event => setTagDraft(event.target.value)} />
+        <input className="tag-input" list="content-existing-tags" aria-label="Add tag to content" placeholder="Add tag" value={tagDraft} onChange={event => setTagDraft(event.target.value)} />
         <datalist id="content-existing-tags">{allTags.map(tag => <option key={tag} value={tag} />)}</datalist>
-        <button className="button" type="submit" disabled={!tagDraft.trim()}>Add tag</button>
       </form>
     </div>
   </>

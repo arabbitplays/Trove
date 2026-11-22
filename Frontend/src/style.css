@@ -295,7 +295,6 @@ button:disabled { cursor: wait; opacity: .6; }
 .period-detail-dates { display: inline-block; margin-top: 6px; color: var(--text-muted); font-size: 13px; }
 .period-view-actions { display: flex; align-items: center; gap: 12px; }
 .period-image-grid { padding-top: 20px; }
-.period-content-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12px; }
 .period-picker-popup { display: flex; flex-direction: column; width: min(100%, 1100px); }
 .period-picker-popup > .content-grid { overflow-y: auto; min-height: 120px; max-height: 48vh; }
 .period-picker-popup .content-grid-end { min-height: 1px; }
@@ -466,6 +465,10 @@ button:disabled { cursor: wait; opacity: .6; }
 }
 .description-editor textarea:focus { border-color: var(--focus); outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .tag-shortcut-section { display: grid; align-content: start; gap: 10px; }
+.content-capture-date { display: grid; justify-items: start; gap: 8px; margin-top: 16px; }
+.content-capture-date label { margin: 0; font-size: 14px; font-weight: 600; }
+.content-capture-date-controls { display: flex; align-items: center; gap: 6px; }
+.content-capture-date input { width: min(100%, 320px); padding: 9px 10px; border: 1px solid var(--control-border); border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
 .tag-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .tag-shortcut { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .tag-shortcut kbd { display: grid; width: 24px; height: 28px; flex: 0 0 24px; place-items: center; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--soft-bg); color: var(--text); font: inherit; font-size: 12px; }
@@ -491,6 +494,7 @@ button:disabled { cursor: wait; opacity: .6; }
 }
 
 .tag:hover { background: var(--soft-hover); }
+.tag-auto { border-style: dashed; color: var(--text-subtle); }
 .tag-input { width: 76px; padding: 3px 5px; border-color: transparent; font-size: 11px; }
 .tag-input::placeholder { color: var(--text-subtle); }
 .tag-input:focus { width: 110px; }

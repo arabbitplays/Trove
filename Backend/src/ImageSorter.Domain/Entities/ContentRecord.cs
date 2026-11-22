@@ -6,23 +6,24 @@ public sealed class ContentRecord
 
     private ContentRecord() { }
 
-    public ContentRecord(string hash, string contentType, string originalName, DateTimeOffset addedAt)
+    public ContentRecord(string hash, string contentType, DateTimeOffset addedAt, DateOnly? takenAt)
     {
         Hash = hash;
         ContentType = contentType;
-        OriginalName = originalName;
         AddedAt = addedAt;
+        TakenAt = takenAt;
     }
 
     public string Hash { get; private set; } = string.Empty;
     public string ContentType { get; private set; } = "application/octet-stream";
-    public string OriginalName { get; private set; } = string.Empty;
-    public string Description { get; private set; } = string.Empty;
     public DateTimeOffset AddedAt { get; private set; }
+    public DateOnly? TakenAt { get; private set; }
+    public string Description { get; private set; } = string.Empty;
     public bool Dirty { get; private set; } = true;
     public ICollection<ContentTag> ContentTags => _contentTags;
 
     public void MarkClean() => Dirty = false;
+    public void UpdateTakenAt(DateOnly? takenAt) => TakenAt = takenAt;
     public void UpdateDescription(string description) => Description = description;
     public void MergeDescription(string description)
     {
@@ -34,9 +35,11 @@ public sealed class ContentRecord
 public sealed class Tag
 {
     private Tag() { }
-    public Tag(string name) => Name = name;
+    public Tag(string name, bool isAuto = false) { Name = name; IsAuto = isAuto; }
     public string Name { get; private set; } = string.Empty;
+    public bool IsAuto { get; private set; }
     public ICollection<ContentTag> ContentTags { get; } = new List<ContentTag>();
+    public void MarkAuto() => IsAuto = true;
 }
 
 public sealed class ContentTag

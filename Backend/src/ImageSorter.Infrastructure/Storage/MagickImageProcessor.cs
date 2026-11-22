@@ -1,10 +1,38 @@
 using ImageMagick;
 using ImageSorter.Application.Abstractions;
+using System.Globalization;
 
 namespace ImageSorter.Infrastructure.Storage;
 
 public sealed class MagickImageProcessor : IImageProcessor
 {
+    public DateOnly? GetDateTaken(Stream source)
+    {
+        if (!source.CanSeek) return null;
+        var position = source.Position;
+        try
+        {
+            using var image = new MagickImage(source);
+            var profile = image.GetExifProfile();
+            var value = profile?.GetValue(ExifTag.DateTimeOriginal)?.Value
+                ?? profile?.GetValue(ExifTag.DateTimeDigitized)?.Value
+                ?? profile?.GetValue(ExifTag.DateTime)?.Value;
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            var date = value.Length >= 10 ? value[..10] : value;
+            return DateOnly.TryParseExact(date, ["yyyy:MM:dd", "yyyy-MM-dd"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var takenAt)
+                ? takenAt
+                : null;
+        }
+        catch (MagickException)
+        {
+            return null;
+        }
+        finally
+        {
+            source.Position = position;
+        }
+    }
+
     public Stream ConvertHeicToPng(Stream source)
     {
         try

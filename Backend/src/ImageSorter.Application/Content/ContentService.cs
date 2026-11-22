@@ -3,7 +3,7 @@ using ImageSorter.Domain.Entities;
 
 namespace ImageSorter.Application.Content;
 
-public sealed record ContentDto(string Hash, string OriginalName, DateTimeOffset AddedAt, IReadOnlyList<string> Tags, string MediaType, string Description);
+public sealed record ContentDto(string Hash, DateTimeOffset AddedAt, DateOnly? TakenAt, IReadOnlyList<string> Tags, IReadOnlyList<string> AutoTags, string MediaType, string Description);
 public sealed record ContentPage(IReadOnlyList<ContentDto> Items, int Total, int Skip, int Take);
 public sealed record ImportResult(int Imported, IReadOnlyList<string> Errors, IReadOnlyList<string> Hashes);
 
@@ -36,7 +36,9 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
             if (!Extensions.Contains(extension)) { errors.Add($"{name}: unsupported media type"); continue; }
             try
             {
-                var convertedName = Path.GetFileName(name);
+                var takenAt = ContentTypeFor(extension).StartsWith("image/", StringComparison.Ordinal)
+                    ? imageProcessor.GetDateTaken(input)
+                    : null;
                 Stream importContent = input;
                 using var converted = string.Equals(extension, ".heic", StringComparison.OrdinalIgnoreCase)
                     ? imageProcessor.ConvertHeicToPng(input)
@@ -45,14 +47,13 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
                 {
                     importContent = converted;
                     extension = ".png";
-                    convertedName = Path.ChangeExtension(convertedName, ".png");
                 }
 
                 var (hash, path) = await storage.SaveAsync(importContent, extension, ct);
                 var type = ContentTypeFor(extension);
                 try
                 {
-                    await catalog.AddAsync(new ContentRecord(hash, type, convertedName, clock.UtcNow), ct);
+                    await catalog.AddAsync(new ContentRecord(hash, type, clock.UtcNow, takenAt), ct);
                     imported++;
                     importedHashes.Add(hash);
                 }
@@ -71,10 +72,10 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
 
     public Task<string?> FindContentPathAsync(string hash, CancellationToken ct) => storage.FindPathAsync(hash, ct);
 
-    public async Task SetDescriptionAsync(string hash, string description, CancellationToken ct)
+    public async Task SetMetadataAsync(string hash, string? description, DateOnly? takenAt, CancellationToken ct)
     {
-        if (description.Length > 5000) throw new ArgumentException("Descriptions cannot exceed 5000 characters.");
-        if (!await catalog.SetDescriptionAsync(hash, description, ct))
+        if (description?.Length > 5000) throw new ArgumentException("Descriptions cannot exceed 5000 characters.");
+        if (!await catalog.SetMetadataAsync(hash, description, takenAt, ct))
             throw new KeyNotFoundException($"Content '{hash}' was not found.");
     }
 
@@ -111,11 +112,25 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
         {
             if (await catalog.ExistsAsync(hash, ct)) continue;
             var extension = Path.GetExtension(path);
-            await catalog.AddAsync(new ContentRecord(hash, ContentTypeFor(extension), hash + extension, new DateTimeOffset(File.GetCreationTimeUtc(path), TimeSpan.Zero)), ct);
+            var mediaType = ContentTypeFor(extension);
+            DateOnly? takenAt = null;
+            if (mediaType.StartsWith("image/", StringComparison.Ordinal))
+            {
+                await using var stream = File.OpenRead(path);
+                takenAt = imageProcessor.GetDateTaken(stream);
+            }
+            await catalog.AddAsync(new ContentRecord(hash, mediaType, new DateTimeOffset(File.GetCreationTimeUtc(path), TimeSpan.Zero), takenAt), ct);
         }
     }
 
-    private static ContentDto ToDto(ContentRecord content) => new(content.Hash, content.OriginalName, content.AddedAt, content.ContentTags.Select(t => t.TagName).Order().ToArray(), content.ContentType, content.Description);
+    private static ContentDto ToDto(ContentRecord content) => new(
+        content.Hash,
+        content.AddedAt,
+        content.TakenAt,
+        content.ContentTags.Where(link => !link.Tag.IsAuto).Select(link => link.TagName).Order().ToArray(),
+        content.ContentTags.Where(link => link.Tag.IsAuto).Select(link => link.TagName).Order().ToArray(),
+        content.ContentType,
+        content.Description);
     private static string NormalizeTag(string value) => value.Trim().ToLowerInvariant();
     private static string[] NormalizeTags(IReadOnlyList<string>? values) => values?
         .Where(value => !string.IsNullOrWhiteSpace(value))
