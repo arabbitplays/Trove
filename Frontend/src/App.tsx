@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Menu, Moon, Sun } from 'lucide-react'
 import ImportPopup from './ImportPopup'
 import ImageSelection from './ImageSelection'
+import PeriodsView from './PeriodsView'
+import ContentMetadataEditor from './ContentMetadataEditor'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
 type ContentItem = { hash: string; originalName: string; addedAt: string; tags: string[]; mediaType: string; description: string }
@@ -14,6 +16,7 @@ export default function App() {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const [contentSelection, setContentSelection] = useState<ContentSelectionState>({ mode: 'some', hashes: [] })
+  const [activeTab, setActiveTab] = useState<'content' | 'periods'>('content')
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid')
   const [selectedHash, setSelectedHash] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -136,7 +139,7 @@ export default function App() {
     }
   }
 
-  async function updateTag(hash: string, tag: string, remove = false) {
+  async function updateTag(hash: string, tag: string, remove = false): Promise<boolean> {
     const previousPage = pageRef.current
     const previousTags = previousPage.items.find(item => item.hash === hash)?.tags
     const tagWasPresent = previousTags?.includes(tag) ?? false
@@ -169,14 +172,15 @@ export default function App() {
         setPage(rollbackPage)
       }
       setNotice('Could not update this tag.')
-      return
+      return false
     }
     setTagDrafts(current => ({ ...current, [hash]: '' }))
     if (remove && selectedTags.includes(tag)) {
       await refresh()
-      return
+      return true
     }
     await refresh()
+    return true
   }
 
   async function updateTagForContent(hashes: string[], tag: string, remove = false) {
@@ -225,6 +229,19 @@ export default function App() {
     ? Math.max(0, page.total - contentSelection.excludedHashes.length)
     : contentSelection.hashes.length
   const allSelected = contentSelection.mode === 'all' && contentSelection.excludedHashes.length === 0
+
+  const tagPicker = <nav className="tag-picker" aria-label="Filter by tags">
+    <div className="tag-picker-row" aria-label="Selected tags">
+      {selectedTags.length === 0
+        ? <span className="filter active" aria-current="true">All</span>
+        : selectedTags.map(tag => <button key={tag} className="filter active" type="button" onClick={() => setSelectedTags(current => current.filter(item => item !== tag))} aria-label={`Remove ${tag} filter`}>{tag}<span aria-hidden="true"> ×</span></button>)}
+      {selectedTags.length > 0 && <button className="text-button" type="button" onClick={() => setSelectedTags([])}>Clear filters</button>}
+    </div>
+    <div className="tag-picker-row" aria-label="Tags with matching content">
+      {availableTags.filter(tag => !selectedTags.includes(tag)).map(tag => <button key={tag} className="filter" type="button" onClick={() => setSelectedTags(current => [...current, tag])}>{tag}</button>)}
+      {availableTags.filter(tag => !selectedTags.includes(tag)).length === 0 && <span className="tag-picker-empty">No more matching tags</span>}
+    </div>
+  </nav>
 
   function toggleContentSelection(hash: string) {
     setContentSelection(current => {
@@ -309,37 +326,19 @@ export default function App() {
   }, [viewMode, loading, page, selectedHash, visible.length, loadNextBatch])
 
   useEffect(() => {
-    if (viewMode !== 'grid' || loading || !gridEndRef.current || page.items.length >= page.total) return
+    if (activeTab !== 'content' || viewMode !== 'grid' || loading || !gridEndRef.current || page.items.length >= page.total) return
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) void loadNextBatch()
     }, { rootMargin: '600px' })
     observer.observe(gridEndRef.current)
     return () => observer.disconnect()
-  }, [viewMode, loading, page.items.length, page.total, loadNextBatch])
+  }, [activeTab, viewMode, loading, page.items.length, page.total, loadNextBatch])
 
   useEffect(() => {
-    if (viewMode !== 'single') return
+    if (activeTab !== 'content' || viewMode !== 'single') return
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target
       if (target instanceof HTMLTextAreaElement && target.id === 'content-description') return
-      const legacyNumber = event.keyCode >= 49 && event.keyCode <= 57
-        ? String(event.keyCode - 48)
-        : event.keyCode >= 97 && event.keyCode <= 105
-          ? String(event.keyCode - 96)
-          : undefined
-      const number = /^[1-9]$/.test(event.key)
-        ? event.key
-        : /^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1] ?? legacyNumber
-      if (number) {
-        const tag = tagShortcuts[number]
-        const current = pageRef.current.items.find(item => item.hash === selectedHash) ?? pageRef.current.items[0]
-        if (tag && current) {
-          event.preventDefault()
-          event.stopPropagation()
-          void updateTag(current.hash, tag)
-        }
-        return
-      }
       if (target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
       event.preventDefault()
@@ -347,13 +346,17 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [viewMode, page, selectedHash, selectedTags, tagShortcuts])
+  }, [activeTab, viewMode, page, selectedHash, selectedTags])
 
   const selectedContent = visible.find(item => item.hash === selectedHash) ?? visible[0]
 
   return <main className="app-shell">
     <header className="topbar">
       <a className="brand" href="#">Content Manager</a>
+      <nav className="header-tabs" aria-label="Main sections">
+        <button className={`header-tab ${activeTab === 'content' ? 'active' : ''}`} type="button" onClick={() => setActiveTab('content')} aria-current={activeTab === 'content' ? 'page' : undefined}>Content</button>
+        <button className={`header-tab ${activeTab === 'periods' ? 'active' : ''}`} type="button" onClick={() => { setActiveTab('periods'); setViewMode('grid') }} aria-current={activeTab === 'periods' ? 'page' : undefined}>Periods</button>
+      </nav>
       <div className="top-actions">
         <input
           ref={element => {
@@ -416,6 +419,12 @@ export default function App() {
       onImport={importFiles}
     />}
 
+    {notice && <div className="notice" role="status">
+      <span>{notice}</span>
+      <button className="text-button" onClick={() => setNotice('')} aria-label="Dismiss message">Dismiss</button>
+    </div>}
+
+    {activeTab === 'content' ? <>
     <section className="library-heading">
       <h1>Library</h1>
       <span>{page.total.toLocaleString()} total</span>
@@ -428,29 +437,7 @@ export default function App() {
       </div>
     </section>
 
-    <nav className="tag-picker" aria-label="Filter by tags">
-      <div className="tag-picker-row" aria-label="Selected tags">
-        <span className="tag-picker-label">Selected</span>
-        {selectedTags.length === 0
-          ? <span className="filter active" aria-current="true">All</span>
-          : selectedTags.map(tag => <button key={tag} className="filter active" type="button" onClick={() => setSelectedTags(current => current.filter(item => item !== tag))} aria-label={`Remove ${tag} filter`}>{tag}<span aria-hidden="true"> ×</span></button>)}
-      </div>
-      <div className="tag-picker-row" aria-label="Tags with matching content">
-        <span className="tag-picker-label">Add tag</span>
-        {availableTags.filter(tag => !selectedTags.includes(tag)).map(tag => <button
-          key={tag}
-          className="filter"
-          type="button"
-          onClick={() => setSelectedTags(current => [...current, tag])}
-        >{tag}</button>)}
-        {availableTags.filter(tag => !selectedTags.includes(tag)).length === 0 && <span className="tag-picker-empty">No more matching tags</span>}
-      </div>
-    </nav>
-
-    {notice && <div className="notice" role="status">
-      <span>{notice}</span>
-      <button className="text-button" onClick={() => setNotice('')} aria-label="Dismiss message">Dismiss</button>
-    </div>}
+    {tagPicker}
 
     {loading ? <p className="state">Loading library…</p> : visible.length === 0 ? <section className="state empty-state">
         <h2>{selectedTags.length ? 'No media found' : 'No media yet'}</h2>
@@ -504,52 +491,33 @@ export default function App() {
           ? <video className="full-content" src={`${API}/api/contents/${selectedContent.hash}/content`} controls preload="metadata" />
           : <img className="full-content" src={`${API}/api/contents/${selectedContent.hash}/content`} alt={selectedContent.originalName} />}
       </div>
-      <section className="single-content-tools" aria-label="Content description and shortcuts">
-        <div className="description-editor">
-          <label htmlFor="content-description">Description</label>
-          <textarea
-            id="content-description"
-            rows={4}
-            maxLength={5000}
-            value={descriptionDrafts[selectedContent.hash] ?? selectedContent.description}
-            onChange={event => setDescriptionDrafts(state => ({ ...state, [selectedContent.hash]: event.target.value }))}
-            onBlur={event => void saveDescription(selectedContent.hash, event.currentTarget.value)}
-          />
-        </div>
-        <section className="tag-shortcut-section" aria-label="Number key tag shortcuts">
-          <h2>Quick tag shortcuts</h2>
-          <div className="tag-shortcuts">
-            {Array.from({ length: 9 }, (_, index) => String(index + 1)).map(number => <label className="tag-shortcut" key={number}>
-              <kbd>{number}</kbd>
-              <select
-                aria-label={`Tag for number ${number}`}
-                value={tagShortcuts[number] ?? ''}
-                onChange={event => {
-                  setTagShortcuts(current => ({ ...current, [number]: event.target.value }))
-                  event.currentTarget.blur()
-                }}
-              >
-                <option value="">No tag</option>
-                {allTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
-              </select>
-            </label>)}
-          </div>
-          <p>Press a number key to add its tag to this content.</p>
-        </section>
-      </section>
-      <div className="single-content-tags">
-        {selectedContent.tags.map(tag => <button key={tag} className="tag" onClick={() => void updateTag(selectedContent.hash, tag, true)} title={`Remove ${tag}`}>
-          {tag}<span aria-hidden="true"> ×</span>
-        </button>)}
-        <form onSubmit={event => {
-          event.preventDefault()
-          const tag = tagDrafts[selectedContent.hash]?.trim()
-          if (tag) void updateTag(selectedContent.hash, tag)
-        }}>
-          <input className="tag-input" aria-label={`Add tag to ${selectedContent.originalName}`} placeholder="Add tag" value={tagDrafts[selectedContent.hash] ?? ''} onChange={event => setTagDrafts(state => ({ ...state, [selectedContent.hash]: event.target.value }))} />
-        </form>
-      </div>
+      <ContentMetadataEditor
+        content={selectedContent}
+        allTags={allTags}
+        description={descriptionDrafts[selectedContent.hash] ?? selectedContent.description}
+        onDescriptionChange={value => setDescriptionDrafts(state => ({ ...state, [selectedContent.hash]: value }))}
+        onSaveDescription={saveDescription}
+        tagShortcuts={tagShortcuts}
+        onShortcutChange={(number, tag) => setTagShortcuts(current => ({ ...current, [number]: tag }))}
+        onApplyShortcut={(hash, tag) => { void updateTag(hash, tag) }}
+        onAddTag={updateTag}
+        onRemoveTag={(hash, tag) => { void updateTag(hash, tag, true) }}
+      />
     </section> : <p className="state">No content in this view.</p>}
+    </> : <PeriodsView
+      contents={visible}
+      totalContents={page.total}
+      selectedTags={selectedTags}
+      onToggleTag={tag => setSelectedTags(current => current.includes(tag) ? current.filter(item => item !== tag) : [...current, tag])}
+      onClearTags={() => setSelectedTags([])}
+      availableTags={availableTags}
+      allTags={allTags}
+      endRef={gridEndRef}
+      loadNextBatch={loadNextBatch}
+      onTagsChanged={refresh}
+      tagShortcuts={tagShortcuts}
+      onShortcutChange={(number, tag) => setTagShortcuts(current => ({ ...current, [number]: tag }))}
+    />}
 
   </main>
 }

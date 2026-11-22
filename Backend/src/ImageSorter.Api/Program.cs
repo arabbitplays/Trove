@@ -32,17 +32,24 @@ try
         .UseNpgsql(connectionString)
         .ConfigureWarnings(warnings => warnings.Log((RelationalEventId.CommandExecuted, Microsoft.Extensions.Logging.LogLevel.Trace))));
     builder.Services.AddScoped<IContentCatalog, EfContentCatalog>();
+    builder.Services.AddScoped<IPeriodCatalog>(services => (EfContentCatalog)services.GetRequiredService<IContentCatalog>());
     builder.Services.AddSingleton<IContentStorage>(_ => new LocalContentStorage(contentPath));
     builder.Services.AddSingleton<IImageProcessor, MagickImageProcessor>();
     builder.Services.AddSingleton<IVideoProcessor, FfmpegVideoProcessor>();
     builder.Services.AddSingleton<IClock, SystemClock>();
     builder.Services.AddScoped<ContentService>();
     builder.Services.AddScoped<TagService>();
+    builder.Services.AddScoped<PeriodService>();
     builder.Services.AddScoped<DuplicateContentService>();
     builder.Services.AddHostedService<DuplicateContentWorker>();
     builder.Services.AddControllers();
     var allowedOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:5173"];
-    builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
+    builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+        .SetIsOriginAllowed(origin =>
+            allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)
+            || (builder.Environment.IsDevelopment() && Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.IsLoopback))
+        .AllowAnyHeader()
+        .AllowAnyMethod()));
     builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options => options.MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024);
 
     var app = builder.Build();
@@ -96,6 +103,18 @@ try
             END $$;
             ALTER TABLE contents ADD COLUMN IF NOT EXISTS dirty boolean NOT NULL DEFAULT TRUE;
             ALTER TABLE contents ADD COLUMN IF NOT EXISTS "Description" text NOT NULL DEFAULT '';
+            CREATE TABLE IF NOT EXISTS periods (
+                id uuid PRIMARY KEY,
+                name varchar(200) NOT NULL,
+                start_date date NOT NULL,
+                end_date date NOT NULL,
+                title_image_hash varchar(64) NULL REFERENCES contents("Hash") ON DELETE SET NULL
+            );
+            CREATE TABLE IF NOT EXISTS period_contents (
+                period_id uuid NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+                content_hash varchar(64) NOT NULL REFERENCES contents("Hash") ON DELETE CASCADE,
+                PRIMARY KEY (period_id, content_hash)
+            );
             """);
     }
 
