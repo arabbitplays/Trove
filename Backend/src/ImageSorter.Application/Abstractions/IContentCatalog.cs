@@ -10,8 +10,9 @@ public interface IContentCatalog
     Task<IReadOnlyList<ContentRecord>> GetContentAsync(CancellationToken cancellationToken);
     Task MarkCleanAsync(string hash, CancellationToken cancellationToken);
     Task<bool> MergeTagsAndDeleteAsync(string sourceHash, string targetHash, CancellationToken cancellationToken);
-    Task<IReadOnlyList<ContentRecord>> ListAsync(string? tag, int skip, int take, CancellationToken cancellationToken);
-    Task<int> CountAsync(string? tag, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ContentRecord>> ListAsync(IReadOnlyList<string> tags, int skip, int take, CancellationToken cancellationToken);
+    Task<int> CountAsync(IReadOnlyList<string> tags, CancellationToken cancellationToken);
+    Task<IReadOnlyList<string>> GetTagsForContentMatchingAsync(IReadOnlyList<string> tags, CancellationToken cancellationToken);
     Task<IReadOnlyList<string>> GetTagsAsync(CancellationToken cancellationToken);
     Task SetTagAsync(string hash, string tag, CancellationToken cancellationToken);
     Task RemoveTagAsync(string hash, string tag, CancellationToken cancellationToken);

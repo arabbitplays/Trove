@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Menu, Moon, Play, Sun } from 'lucide-react'
+import { Menu, Moon, Sun } from 'lucide-react'
 import ImportPopup from './ImportPopup'
+import ImageSelection from './ImageSelection'
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
 type ContentItem = { hash: string; originalName: string; addedAt: string; tags: string[]; mediaType: string; description: string }
 type Page = { items: ContentItem[]; total: number; skip: number; take: number }
+type ContentSelectionState = { mode: 'some'; hashes: string[] } | { mode: 'all'; excludedHashes: string[] }
 
 export default function App() {
   const [page, setPage] = useState<Page>({ items: [], total: 0, skip: 0, take: 48 })
   const [allTags, setAllTags] = useState<string[]>([])
-  const [activeTag, setActiveTag] = useState('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [availableTags, setAvailableTags] = useState<string[]>([])
+  const [contentSelection, setContentSelection] = useState<ContentSelectionState>({ mode: 'some', hashes: [] })
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid')
   const [selectedHash, setSelectedHash] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -29,36 +33,44 @@ export default function App() {
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null)
   const [notice, setNotice] = useState('')
   const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({})
-  const picker = useRef<HTMLInputElement>(null)
+  const picker = useRef<HTMLInputElement | null>(null)
   const navigationPending = useRef(false)
   const pageRef = useRef(page)
-  const activeTagRef = useRef(activeTag)
+  const selectedTagsRef = useRef(selectedTags)
   const nextPageRequest = useRef<Promise<ContentItem[]> | null>(null)
   const gridEndRef = useRef<HTMLDivElement>(null)
-  activeTagRef.current = activeTag
+  selectedTagsRef.current = selectedTags
 
-  const refresh = useCallback(async (tag = activeTag) => {
+  const refresh = useCallback(async (tags = selectedTags) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ skip: '0', take: '100' })
-      if (tag) params.set('tag', tag)
+      tags.forEach(tag => params.append('tag', tag))
+      const tagParams = new URLSearchParams()
+      tags.forEach(tag => tagParams.append('tag', tag))
       const [contentsResponse, tagsResponse] = await Promise.all([
         fetch(`${API}/api/contents?${params}`),
-        fetch(`${API}/api/tags`),
+        fetch(`${API}/api/tags?${tagParams}`),
       ])
       if (!contentsResponse.ok || !tagsResponse.ok) throw new Error('Request failed')
       const nextPage = await contentsResponse.json() as Page
+      const tagResult = await tagsResponse.json() as { tags: string[]; availableTags: string[] }
       pageRef.current = nextPage
       setPage(nextPage)
-      setAllTags(await tagsResponse.json() as string[])
+      setAllTags(tagResult.tags)
+      setAvailableTags(tagResult.availableTags)
     } catch {
       setApiAvailable(false)
     } finally {
       setLoading(false)
     }
-  }, [activeTag])
+  }, [selectedTags])
 
   useEffect(() => { void refresh() }, [refresh])
+
+  useEffect(() => {
+    setContentSelection({ mode: 'some', hashes: [] })
+  }, [selectedTags])
 
   useEffect(() => {
     localStorage.setItem('content-tag-shortcuts', JSON.stringify(tagShortcuts))
@@ -160,12 +172,11 @@ export default function App() {
       return
     }
     setTagDrafts(current => ({ ...current, [hash]: '' }))
-    if (remove && activeTag === tag) {
+    if (remove && selectedTags.includes(tag)) {
       await refresh()
       return
     }
-    const tagsResponse = await fetch(`${API}/api/tags`)
-    if (tagsResponse.ok) setAllTags(await tagsResponse.json() as string[])
+    await refresh()
   }
 
   async function updateTagForContent(hashes: string[], tag: string, remove = false) {
@@ -210,17 +221,42 @@ export default function App() {
   }
 
   const visible = page.items
+  const selectedCount = contentSelection.mode === 'all'
+    ? Math.max(0, page.total - contentSelection.excludedHashes.length)
+    : contentSelection.hashes.length
+  const allSelected = contentSelection.mode === 'all' && contentSelection.excludedHashes.length === 0
+
+  function toggleContentSelection(hash: string) {
+    setContentSelection(current => {
+      if (current.mode === 'all') {
+        const excluded = new Set(current.excludedHashes)
+        if (excluded.has(hash)) excluded.delete(hash)
+        else excluded.add(hash)
+        return { mode: 'all', excludedHashes: [...excluded] }
+      }
+      const hashes = new Set(current.hashes)
+      if (hashes.has(hash)) hashes.delete(hash)
+      else hashes.add(hash)
+      return { mode: 'some', hashes: [...hashes] }
+    })
+  }
+
+  function toggleAllContentSelection() {
+    setContentSelection(current => current.mode === 'all' && current.excludedHashes.length === 0
+      ? { mode: 'some', hashes: [] }
+      : { mode: 'all', excludedHashes: [] })
+  }
 
   const loadNextBatch = useCallback((): Promise<ContentItem[]> => {
     if (nextPageRequest.current) return nextPageRequest.current
     const current = pageRef.current
     const skip = current.items.length
-    const tag = activeTagRef.current
+    const tags = selectedTagsRef.current
     if (skip >= current.total) return Promise.resolve([])
 
-    const request = fetchContentPage(skip, tag).then(batch => {
+    const request = fetchContentPage(skip, tags).then(batch => {
       const latest = pageRef.current
-      if (activeTagRef.current !== tag || latest.items.length !== skip || !batch.items.length) return []
+      if (selectedTagsRef.current.join('\0') !== tags.join('\0') || latest.items.length !== skip || !batch.items.length) return []
       const expanded = { ...batch, items: [...latest.items, ...batch.items] }
       pageRef.current = expanded
       setPage(expanded)
@@ -311,7 +347,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [viewMode, page, selectedHash, activeTag, tagShortcuts])
+  }, [viewMode, page, selectedHash, selectedTags, tagShortcuts])
 
   const selectedContent = visible.find(item => item.hash === selectedHash) ?? visible[0]
 
@@ -392,13 +428,23 @@ export default function App() {
       </div>
     </section>
 
-    <nav className="filters" aria-label="Filter by tag">
-      <button className={`filter ${activeTag === '' ? 'active' : ''}`} onClick={() => setActiveTag('')}>All</button>
-      {allTags.map(tag => <button
-        key={tag}
-        className={`filter ${activeTag === tag ? 'active' : ''}`}
-        onClick={() => setActiveTag(activeTag === tag ? '' : tag)}
-      >{tag}</button>)}
+    <nav className="tag-picker" aria-label="Filter by tags">
+      <div className="tag-picker-row" aria-label="Selected tags">
+        <span className="tag-picker-label">Selected</span>
+        {selectedTags.length === 0
+          ? <span className="filter active" aria-current="true">All</span>
+          : selectedTags.map(tag => <button key={tag} className="filter active" type="button" onClick={() => setSelectedTags(current => current.filter(item => item !== tag))} aria-label={`Remove ${tag} filter`}>{tag}<span aria-hidden="true"> ×</span></button>)}
+      </div>
+      <div className="tag-picker-row" aria-label="Tags with matching content">
+        <span className="tag-picker-label">Add tag</span>
+        {availableTags.filter(tag => !selectedTags.includes(tag)).map(tag => <button
+          key={tag}
+          className="filter"
+          type="button"
+          onClick={() => setSelectedTags(current => [...current, tag])}
+        >{tag}</button>)}
+        {availableTags.filter(tag => !selectedTags.includes(tag)).length === 0 && <span className="tag-picker-empty">No more matching tags</span>}
+      </div>
     </nav>
 
     {notice && <div className="notice" role="status">
@@ -407,20 +453,23 @@ export default function App() {
     </div>}
 
     {loading ? <p className="state">Loading library…</p> : visible.length === 0 ? <section className="state empty-state">
-        <h2>{activeTag ? 'No media found' : 'No media yet'}</h2>
-        <p>{activeTag ? 'Try a different tag filter.' : 'Import a folder to add images and videos to your library.'}</p>
-    </section> : viewMode === 'grid' ? <section className="content-grid" aria-label="Media library">
-      {visible.map(item => <article className="content-card" key={item.hash}>
-        <button className="content-preview-wrap" type="button" onClick={() => {
-          setSelectedHash(item.hash)
-          setViewMode('single')
-        }} aria-label={`Open ${item.originalName}`}>
-          <img className="content-preview" src={`${API}/api/contents/${item.hash}/thumbnail`} alt={item.originalName} loading="lazy" />
-          {item.mediaType.startsWith('video/') && <span className="video-indicator" aria-label="Video">
-            <Play size={16} fill="currentColor" aria-hidden="true" />
-          </span>}
-        </button>
-        <div className="content-details">
+        <h2>{selectedTags.length ? 'No media found' : 'No media yet'}</h2>
+        <p>{selectedTags.length ? 'Try removing a selected tag.' : 'Import a folder to add images and videos to your library.'}</p>
+    </section> : viewMode === 'grid' ? <ImageSelection
+      items={visible}
+      total={page.total}
+      selectedCount={selectedCount}
+      allSelected={allSelected}
+      isSelected={hash => contentSelection.mode === 'all'
+        ? !contentSelection.excludedHashes.includes(hash)
+        : contentSelection.hashes.includes(hash)}
+      onToggleAll={toggleAllContentSelection}
+      onToggle={toggleContentSelection}
+      onOpen={item => {
+        setSelectedHash(item.hash)
+        setViewMode('single')
+      }}
+      renderDetails={item => <div className="content-details">
           <div className="card-tags">
             {item.tags.map(tag => <button
               key={tag}
@@ -442,10 +491,9 @@ export default function App() {
               />
             </form>
           </div>
-        </div>
-      </article>)}
-      <div ref={gridEndRef} className="content-grid-end" aria-hidden="true" />
-    </section> : selectedContent ? <section className="single-content" aria-label="Single content view">
+        </div>}
+      endRef={gridEndRef}
+    /> : selectedContent ? <section className="single-content" aria-label="Single content view">
       <header className="single-content-heading">
         <div className="single-content-title">
           <span>{page.items.findIndex(item => item.hash === selectedContent.hash) + 1} of {page.total.toLocaleString()}</span>
@@ -506,9 +554,9 @@ export default function App() {
   </main>
 }
 
-async function fetchContentPage(skip: number, tag: string): Promise<Page> {
+async function fetchContentPage(skip: number, tags: string[]): Promise<Page> {
   const params = new URLSearchParams({ skip: String(skip), take: '100' })
-  if (tag) params.set('tag', tag)
+  tags.forEach(tag => params.append('tag', tag))
   const response = await fetch(`${API}/api/contents?${params}`)
   if (!response.ok) return { items: [], total: 0, skip, take: 100 }
   return await response.json() as Page

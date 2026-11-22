@@ -10,7 +10,7 @@ public sealed class ContentController(ContentService service) : ControllerBase
     public sealed record DescriptionRequest(string Description);
 
     [HttpGet("contents")]
-    public async Task<IActionResult> List([FromQuery] string? tag, [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct) =>
+    public async Task<IActionResult> List([FromQuery] string[]? tag, [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct) =>
         Ok(await service.ListAsync(tag, skip ?? 0, take ?? 50, ct));
 
     [HttpGet("contents/{hash}/thumbnail")]

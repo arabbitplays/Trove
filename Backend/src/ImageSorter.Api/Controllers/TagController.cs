@@ -5,11 +5,15 @@ namespace ImageSorter.Api.Controllers;
 
 [ApiController]
 [Route("api")]
-public sealed class TagController(TagService service) : ControllerBase
+public sealed class TagController(TagService service, ContentService contentService) : ControllerBase
 {
+    public sealed record TagListResponse(IReadOnlyList<string> Tags, IReadOnlyList<string> AvailableTags);
+
     [HttpGet("tags")]
-    public async Task<IActionResult> List(CancellationToken ct) =>
-        Ok(await service.ListAsync(ct));
+    public async Task<IActionResult> List([FromQuery] string[]? tag, CancellationToken ct) =>
+        Ok(new TagListResponse(
+            await service.ListAsync(ct),
+            await contentService.GetAvailableTagsAsync(tag, ct)));
 
     [HttpPut("tags/{tag}")]
     public async Task<IActionResult> Add(string tag, [FromBody] string[] hashes, CancellationToken ct)

@@ -47,17 +47,23 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog
         return true;
     }
 
-    public async Task<IReadOnlyList<ContentRecord>> ListAsync(string? tag, int skip, int take, CancellationToken ct)
+    public async Task<IReadOnlyList<ContentRecord>> ListAsync(IReadOnlyList<string> tags, int skip, int take, CancellationToken ct)
     {
         var query = db.Contents.AsNoTracking().Include(content => content.ContentTags).ThenInclude(link => link.Tag).AsQueryable();
-        if (tag is not null) query = query.Where(content => content.ContentTags.Any(link => link.TagName == tag));
+        foreach (var tag in tags) query = query.Where(content => content.ContentTags.Any(link => link.TagName == tag));
         return await query.OrderByDescending(content => content.AddedAt).ThenBy(content => content.Hash).Skip(skip).Take(take).ToListAsync(ct);
     }
-    public Task<int> CountAsync(string? tag, CancellationToken ct)
+    public Task<int> CountAsync(IReadOnlyList<string> tags, CancellationToken ct)
     {
         var query = db.Contents.AsQueryable();
-        if (tag is not null) query = query.Where(content => content.ContentTags.Any(link => link.TagName == tag));
+        foreach (var tag in tags) query = query.Where(content => content.ContentTags.Any(link => link.TagName == tag));
         return query.CountAsync(ct);
+    }
+    public async Task<IReadOnlyList<string>> GetTagsForContentMatchingAsync(IReadOnlyList<string> tags, CancellationToken ct)
+    {
+        var query = db.Contents.AsNoTracking().AsQueryable();
+        foreach (var tag in tags) query = query.Where(content => content.ContentTags.Any(link => link.TagName == tag));
+        return await query.SelectMany(content => content.ContentTags).Select(link => link.TagName).Distinct().OrderBy(tag => tag).ToListAsync(ct);
     }
     public async Task<IReadOnlyList<string>> GetTagsAsync(CancellationToken ct) => await db.Tags.AsNoTracking().OrderBy(tag => tag.Name).Select(tag => tag.Name).ToListAsync(ct);
     public async Task SetTagAsync(string hash, string tag, CancellationToken ct)

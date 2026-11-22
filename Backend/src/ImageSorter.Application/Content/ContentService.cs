@@ -12,13 +12,17 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase)
         { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".avif", ".heic", ".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".mpg", ".mpeg", ".3gp" };
 
-    public async Task<ContentPage> ListAsync(string? tag, int skip, int take, CancellationToken ct)
+    public async Task<ContentPage> ListAsync(IReadOnlyList<string>? tags, int skip, int take, CancellationToken ct)
     {
         await ReconcileStorageAsync(ct);
         var safeTake = Math.Clamp(take, 1, 100);
-        var contents = await catalog.ListAsync(NormalizeTagOrNull(tag), Math.Max(0, skip), safeTake, ct);
-        return new ContentPage(contents.Select(ToDto).ToArray(), await catalog.CountAsync(NormalizeTagOrNull(tag), ct), Math.Max(0, skip), safeTake);
+        var normalizedTags = NormalizeTags(tags);
+        var contents = await catalog.ListAsync(normalizedTags, Math.Max(0, skip), safeTake, ct);
+        return new ContentPage(contents.Select(ToDto).ToArray(), await catalog.CountAsync(normalizedTags, ct), Math.Max(0, skip), safeTake);
     }
+
+    public Task<IReadOnlyList<string>> GetAvailableTagsAsync(IReadOnlyList<string>? tags, CancellationToken ct) =>
+        catalog.GetTagsForContentMatchingAsync(NormalizeTags(tags), ct);
 
     public async Task<ImportResult> ImportAsync(IEnumerable<(Stream Content, string Name)> files, CancellationToken ct)
     {
@@ -113,7 +117,11 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
 
     private static ContentDto ToDto(ContentRecord content) => new(content.Hash, content.OriginalName, content.AddedAt, content.ContentTags.Select(t => t.TagName).Order().ToArray(), content.ContentType, content.Description);
     private static string NormalizeTag(string value) => value.Trim().ToLowerInvariant();
-    private static string? NormalizeTagOrNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : NormalizeTag(value);
+    private static string[] NormalizeTags(IReadOnlyList<string>? values) => values?
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(NormalizeTag)
+        .Distinct(StringComparer.Ordinal)
+        .ToArray() ?? [];
     private static string ContentTypeFor(string extension) => extension.ToLowerInvariant() switch
     {
         ".jpg" or ".jpeg" => "image/jpeg", ".png" => "image/png", ".gif" => "image/gif", ".webp" => "image/webp",
