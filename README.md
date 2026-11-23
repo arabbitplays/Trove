@@ -1,4 +1,4 @@
-# Content Manager
+# Trove
 
 A local full-stack media library built with PostgreSQL, ASP.NET Core 8, and React with TypeScript. The backend stores original media files in `~/Resources/Images`, named by a lowercase random ID plus the original extension. PostgreSQL stores each ID, the immutable added date, an optional capture date read from image metadata, content type, description, and normalized tags. Tags can be manually assigned or automatically assigned by the program.
 
@@ -18,12 +18,12 @@ nix develop
 Run the API from this folder:
 
 ```sh
-dotnet run --project Backend/src/ImageSorter.Api
+dotnet run --project Backend/src/Trove.Api
 ```
 
 The API creates the database tables and `~/Resources/Images` on startup. It listens at `http://localhost:5000` by default.
 
-The backend uses NLog for application and ASP.NET Core logging. Logs are written to the console and to `Backend/src/ImageSorter.Api/bin/<configuration>/net8.0/logs/imagemanager.log` during local development. The file target archives daily or when it reaches 10 MiB, and retains up to 14 archives under `logs/archive`. When published, the log folder is beside the API output.
+The backend uses NLog for application and ASP.NET Core logging. Logs are written to the console and to `Backend/src/Trove.Api/bin/<configuration>/net8.0/logs/trove.log` during local development. The file target archives daily or when it reaches 10 MiB, and retains up to 14 archives under `logs/archive`. When published, the log folder is beside the API output.
 
 In a second terminal, start the React application:
 
@@ -41,10 +41,10 @@ The default PostgreSQL connection is `Host=localhost;Port=5432;Database=imageman
 
 ## Project structure
 
-- `Backend/src/ImageSorter.Domain`: content and tag entities.
-- `Backend/src/ImageSorter.Application`: use cases and persistence/storage interfaces.
-- `Backend/src/ImageSorter.Infrastructure`: EF Core / Npgsql and local filesystem storage.
-- `Backend/src/ImageSorter.Api`: HTTP endpoints and dependency configuration.
+- `Backend/src/Trove.Domain`: content and tag entities.
+- `Backend/src/Trove.Application`: use cases and persistence/storage interfaces.
+- `Backend/src/Trove.Infrastructure`: EF Core / Npgsql and local filesystem storage.
+- `Backend/src/Trove.Api`: HTTP endpoints and dependency configuration.
 - `Frontend`: React and TypeScript client.
 
 The database uses GUID identifiers for content and its tag and period relationships. Files and thumbnails use the same GUID names. EF Core creates the schema on startup when the database is empty; the API reconciles GUID-named files already in the media directory into the catalog when listing the collection.

@@ -53,7 +53,17 @@ export default function ContentMetadataEditor({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLElement && event.target.isContentEditable) return
+      if (
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement ||
+        event.target instanceof HTMLSelectElement ||
+        (event.target instanceof HTMLElement && event.target.isContentEditable)
+      ) {
+        return
+      }
       const digit = /^[1-9]$/.test(event.key) ? event.key : /^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1]
       if (!digit) return
       const tag = tagShortcuts[digit]

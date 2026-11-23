@@ -1,0 +1,36 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Trove.Domain", "src/Trove.Domain/Trove.Domain.csproj", "{ECA57E98-5532-4DDD-9A4E-78C045A62A01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Trove.Application", "src/Trove.Application/Trove.Application.csproj", "{80C99063-5FE7-46C4-A88B-18CB0F239A02}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Trove.Infrastructure", "src/Trove.Infrastructure/Trove.Infrastructure.csproj", "{9FF08F2C-6032-4BD0-BF64-19F23B34A003}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Trove.Api", "src/Trove.Api/Trove.Api.csproj", "{BF107192-D355-42CE-A80B-7B1D570C1604}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{ECA57E98-5532-4DDD-9A4E-78C045A62A01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ECA57E98-5532-4DDD-9A4E-78C045A62A01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ECA57E98-5532-4DDD-9A4E-78C045A62A01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ECA57E98-5532-4DDD-9A4E-78C045A62A01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{80C99063-5FE7-46C4-A88B-18CB0F239A02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{80C99063-5FE7-46C4-A88B-18CB0F239A02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{80C99063-5FE7-46C4-A88B-18CB0F239A02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{80C99063-5FE7-46C4-A88B-18CB0F239A02}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9FF08F2C-6032-4BD0-BF64-19F23B34A003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9FF08F2C-6032-4BD0-BF64-19F23B34A003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9FF08F2C-6032-4BD0-BF64-19F23B34A003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9FF08F2C-6032-4BD0-BF64-19F23B34A003}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BF107192-D355-42CE-A80B-7B1D570C1604}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BF107192-D355-42CE-A80B-7B1D570C1604}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BF107192-D355-42CE-A80B-7B1D570C1604}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BF107192-D355-42CE-A80B-7B1D570C1604}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

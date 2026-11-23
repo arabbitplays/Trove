@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 const supportedExtensions = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.avif', '.heic',
@@ -19,6 +19,17 @@ export default function ImportPopup({ files, tags, importing, onCancel, onImport
   const [tagError, setTagError] = useState('')
   const importableFiles = files.filter(file => supportedExtensions.has(file.name.slice(file.name.lastIndexOf('.')).toLowerCase()))
   const availableTags = tags
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !importing) {
+        event.stopPropagation()
+        onCancel()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [importing, onCancel])
 
   function toggleTag(tag: string) {
     setSelectedTags(current => current.includes(tag)

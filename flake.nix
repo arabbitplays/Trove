@@ -1,5 +1,5 @@
 {
-  description = "Content Manager full-stack development environment";
+  description = "Trove full-stack development environment";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
 
