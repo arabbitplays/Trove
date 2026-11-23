@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Menu, Moon, Sun, Tags } from 'lucide-react'
+import { Menu, Moon, Sun, Tags, Trash2 } from 'lucide-react'
 
 type SidebarDrawerProps = {
   mounted: boolean
@@ -11,6 +11,7 @@ type SidebarDrawerProps = {
   darkMode: boolean
   onToggleDarkMode: () => void
   onManageTags: () => void
+  onOpenGarbage: () => void
 }
 
 export default function SidebarDrawer({
@@ -23,6 +24,7 @@ export default function SidebarDrawer({
   darkMode,
   onToggleDarkMode,
   onManageTags,
+  onOpenGarbage,
 }: SidebarDrawerProps) {
   useEffect(() => {
     if (!open) return
@@ -85,6 +87,17 @@ export default function SidebarDrawer({
         >
           <Tags size={18} aria-hidden="true" />
           Manage tags
+        </button>
+        <button
+          className="button sidebar-menu-item"
+          type="button"
+          onClick={() => {
+            onClose()
+            onOpenGarbage()
+          }}
+        >
+          <Trash2 size={18} aria-hidden="true" />
+          Garbage Bin
         </button>
         <button
           className="button sidebar-theme-toggle"

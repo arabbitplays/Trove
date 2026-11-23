@@ -6,6 +6,7 @@ namespace Trove.Application.Abstractions;
 public interface IContentCatalog
 {
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken);
+    Task<bool> IsDeletedAsync(Guid id, CancellationToken cancellationToken);
     Task AddAsync(ContentRecord content, CancellationToken cancellationToken);
     Task<IReadOnlyList<ContentRecord>> GetDirtyContentAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<ContentRecord>> GetContentAsync(CancellationToken cancellationToken);
@@ -24,6 +25,7 @@ public interface IContentCatalog
     Task<bool> SetMetadataAsync(Guid id, string? description, DateOnly? takenAt, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
     Task<bool> RestoreAsync(Guid id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<DeletedContentRecord>> ListDeletedAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<Guid>> GetExpiredDeletedContentAsync(DateTimeOffset cutoff, CancellationToken cancellationToken);
     Task PurgeDeletedContentAsync(Guid id, CancellationToken cancellationToken);
     Task ApplyImportTagsAsync(IReadOnlyList<Guid> contentIds, IReadOnlyList<string> tags, string newTag, CancellationToken cancellationToken);

@@ -39,6 +39,7 @@ try
     builder.Services.AddSingleton<IVideoProcessor, FfmpegVideoProcessor>();
     builder.Services.AddSingleton<IClock, SystemClock>();
     builder.Services.AddScoped<ContentService>();
+    builder.Services.AddScoped<GarbageService>();
     builder.Services.AddScoped<TagService>();
     builder.Services.AddScoped<PeriodService>();
     builder.Services.AddScoped<DuplicateContentService>();

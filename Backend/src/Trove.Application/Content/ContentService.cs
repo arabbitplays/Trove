@@ -119,7 +119,7 @@ public sealed class ContentService(IContentCatalog catalog, IContentStorage stor
     {
         await foreach (var (id, path) in storage.EnumerateAsync(ct))
         {
-            if (await catalog.ExistsAsync(id, ct)) continue;
+            if (await catalog.ExistsAsync(id, ct) || await catalog.IsDeletedAsync(id, ct)) continue;
             var extension = Path.GetExtension(path);
             var mediaType = ContentTypeFor(extension);
             DateOnly? takenAt = null;

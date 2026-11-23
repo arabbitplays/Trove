@@ -723,6 +723,67 @@ button:disabled { cursor: wait; opacity: .6; }
   outline-offset: 1px;
 }
 
+.garbage-view {
+  padding: 28px 0 40px;
+}
+.garbage-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.garbage-grid {
+  padding-top: 0;
+}
+.garbage-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.garbage-thumb-wrap {
+  position: relative;
+  background: var(--surface-muted);
+}
+.garbage-media-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 68%);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.garbage-card-info {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+.garbage-card-info strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.garbage-card-info > span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.garbage-card-info .card-tags {
+  min-height: 22px;
+}
+.garbage-restore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 @media (max-width: 640px) {
   .app-shell { width: min(100% - 28px, 1280px); }
   .topbar { min-height: 60px; gap: 4px; }

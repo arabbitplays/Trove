@@ -9,6 +9,7 @@ import ImportPopup from './ImportPopup'
 import ImageSelection from './ImageSelection'
 import PeriodsView from './PeriodsView'
 import TagsView from './TagsView'
+import GarbageView from './GarbageView'
 import { API, formatDate } from './config'
 import type { ContentItem, ContentSelectionState, Page, PeriodSummary, TagResult } from './types'
 
@@ -22,7 +23,7 @@ export default function App() {
   const [contentPeriods, setContentPeriods] = useState<Record<string, PeriodSummary[]>>({})
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null)
   const [contentSelection, setContentSelection] = useState<ContentSelectionState>({ mode: 'some', ids: [] })
-  const [activeTab, setActiveTab] = useState<'content' | 'periods' | 'tags'>('content')
+  const [activeTab, setActiveTab] = useState<'content' | 'periods' | 'tags' | 'garbage'>('content')
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid')
   const [selectedId, setSelectedId] = useState('')
   const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number; tagOpen: boolean } | null>(null)
@@ -555,6 +556,10 @@ export default function App() {
           setActiveTab('tags')
           setViewMode('grid')
         }}
+        onOpenGarbage={() => {
+          setActiveTab('garbage')
+          setViewMode('grid')
+        }}
       />
 
       {apiAvailable === false && (
@@ -792,6 +797,14 @@ export default function App() {
           }
           selectedPeriodId={selectedPeriodId}
           onClearSelectedPeriod={() => setSelectedPeriodId(null)}
+        />
+      ) : activeTab === 'garbage' ? (
+        <GarbageView
+          onBack={() => setActiveTab('content')}
+          onRestored={() => {
+            void refreshTagData()
+            void refresh(selectedTags, false)
+          }}
         />
       ) : (
         <TagsView

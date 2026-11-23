@@ -15,6 +15,17 @@ export type Page = {
   take: number
 }
 
+export type DeletedContentItem = {
+  id: string
+  addedAt: string
+  takenAt: string | null
+  deletedAt: string
+  tags: string[]
+  autoTags: string[]
+  mediaType: string
+  description: string
+}
+
 export type ContentSelectionState =
   | { mode: 'some'; ids: string[] }
   | { mode: 'all'; excludedIds: string[] }

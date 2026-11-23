@@ -2,8 +2,8 @@ import { type RefObject } from 'react'
 import { Menu } from 'lucide-react'
 
 type TopBarProps = {
-  activeTab: 'content' | 'periods' | 'tags'
-  onSelectTab: (tab: 'content' | 'periods' | 'tags') => void
+  activeTab: 'content' | 'periods' | 'tags' | 'garbage'
+  onSelectTab: (tab: 'content' | 'periods' | 'tags' | 'garbage') => void
   sidebarOpen: boolean
   onOpenSidebar: () => void
   fileInputRef: RefObject<HTMLInputElement>

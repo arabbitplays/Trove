@@ -8,6 +8,7 @@ namespace Trove.Infrastructure.Persistence;
 public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPeriodCatalog
 {
     public Task<bool> ExistsAsync(Guid id, CancellationToken ct) => db.Contents.AnyAsync(content => content.Id == id, ct);
+    public Task<bool> IsDeletedAsync(Guid id, CancellationToken ct) => db.DeletedContents.AnyAsync(item => item.Id == id, ct);
     public async Task AddAsync(ContentRecord content, CancellationToken ct) { db.Contents.Add(content); await db.SaveChangesAsync(ct); }
     public async Task<IReadOnlyList<ContentRecord>> GetDirtyContentAsync(CancellationToken ct) => await db.Contents.AsNoTracking()
         .Where(content => content.Dirty)
@@ -327,6 +328,7 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
         var deleted = await db.DeletedContents.SingleOrDefaultAsync(item => item.Id == id, ct);
         if (deleted is null) return false;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Contents.Where(item => item.Id == id).ExecuteDeleteAsync(ct);
         var content = new ContentRecord(deleted.Id, deleted.ContentType, deleted.AddedAt, deleted.TakenAt, deleted.Description, deleted.Dirty);
         db.Contents.Add(content);
         foreach (var tagSnapshot in System.Text.Json.JsonSerializer.Deserialize<DeletedTagSnapshot[]>(deleted.TagsJson) ?? [])
@@ -347,6 +349,10 @@ public sealed class EfContentCatalog(ContentDbContext db) : IContentCatalog, IPe
         await tx.CommitAsync(ct);
         return true;
     }
+
+    public async Task<IReadOnlyList<DeletedContentRecord>> ListDeletedAsync(CancellationToken ct) => await db.DeletedContents.AsNoTracking()
+        .OrderByDescending(item => item.DeletedAt).ThenBy(item => item.Id)
+        .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Guid>> GetExpiredDeletedContentAsync(DateTimeOffset cutoff, CancellationToken ct) =>
         await db.DeletedContents.Where(item => item.DeletedAt <= cutoff).Select(item => item.Id).ToListAsync(ct);
